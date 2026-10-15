@@ -145,30 +145,30 @@ If you write `progress.md` before asking who is committing, fill in the name aft
 
 ## 8. Commands
 
-These are the standard commands. Update this section once the repo is scaffolded.
-
 ```bash
-# Frontend (web/)
+# Frontend (run inside web/)
 npm install
-npm run dev              # local dev server
-npm run build            # production build
+npm run dev              # local dev server on http://localhost:5173
+npm run build            # typecheck + production build
 npm run lint
-npx tsc --noEmit         # typecheck
+npm run typecheck        # tsc -b (plain `tsc --noEmit` checks nothing with this tsconfig layout)
 
-# Supabase (local)
+# Supabase (local, run from the repo root; needs Docker for `start`)
 supabase start                       # local Postgres + functions
 supabase migration new <name>        # new migration file
 supabase db reset                    # re-apply all migrations locally (wipes LOCAL data only)
-supabase functions serve             # run edge functions locally
+supabase functions serve --env-file supabase/functions/.env   # run edge functions locally
 ```
 
-**Hosted Supabase and Vercel:** use the Supabase and Vercel connectors. Ask before any change (section 5). Resend and other integrations are written in code, not used through connectors.
+Local env files: copy `web/.env.example` to `web/.env.local` and `supabase/functions/.env.example` to `supabase/functions/.env`. Both copies are git-ignored.
 
-**Cloud sessions:** Deno and the Supabase CLI aren't pre-installed. If a check below needs a tool that isn't available, say which check you couldn't run instead of skipping it silently.
+**Hosted Supabase and Vercel:** use the Supabase and Vercel connectors. Ask before any change (section 5). Resend and other integrations are written in code, not used through connectors. Vercel's project root is `web/`.
+
+**Cloud sessions:** Deno and the Supabase CLI aren't pre-installed, but both run through npx: `npx -y deno@2.3.1 ...` and `npx -y supabase@2.48.3 ...`. `supabase start` / `db reset` still need Docker. If a check below needs a tool that isn't available, say which check you couldn't run instead of skipping it silently.
 
 **Checks before committing**
 
-- Frontend change: `npx tsc --noEmit`, `npm run lint`, `npm run build`
+- Frontend change (in `web/`): `npm run typecheck`, `npm run lint`, `npm run build`
 - Edge Function change: `deno check supabase/functions/<name>/index.ts`
 - SQL change: `supabase db reset` succeeds, and the RLS checklist in `architecture.md` section 5.2 still passes
 
