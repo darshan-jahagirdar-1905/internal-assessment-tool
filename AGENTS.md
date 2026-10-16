@@ -19,7 +19,7 @@ The repo keeps **two docs**, and both must stay accurate:
 | Doc | What it holds | When it changes |
 |---|---|---|
 | `architecture.md` | The design: scope, stack, database, RLS, endpoints, rules | Only when the design changes, and only after the person agrees (section 5) |
-| `progress.md` | A log of every change: who did what, and when | In **every** commit (section 7) |
+| `progress.md` | A log of every change: who did what, and when | In **every** PR (section 7) |
 
 `architecture.md` is the source of truth. If a task conflicts with it or goes beyond it, stop and ask.
 
@@ -46,7 +46,7 @@ If the committing person's email is blank, ask for it once and add it to this ta
 ## 3. Before starting any task
 
 1. Run `git status`. If there are uncommitted changes you didn't make, leave them alone and mention them. Never discard, stash or overwrite someone else's work.
-2. Make sure your branch starts from the latest `main`: run `git fetch origin main`, and if `main` has moved, `git rebase origin/main`. If this fails because of uncommitted changes, tell the person instead of forcing it.
+2. Make sure your branch starts from the latest `main`: run `git fetch origin main`, and if `main` has moved, bring it in: `git rebase origin/main` if your branch has never been pushed, otherwise `git merge origin/main`. If this fails because of uncommitted changes, tell the person instead of forcing it.
 3. Read the latest entries in `progress.md`, so you know what changed recently.
 4. Read the sections of `architecture.md` that relate to the task.
 
@@ -75,17 +75,17 @@ If the committing person's email is blank, ask for it once and add it to this ta
 - Adding or removing a dependency.
 - Deleting or renaming files outside the task.
 - Reading or changing `.env` files or secrets.
-- Anything that changes the **hosted** Supabase project or Vercel, whether through the Supabase or Vercel connector or the CLI: applying migrations, running SQL that changes data, deploying functions, changing secrets or environment variables, deploying the site. Read-only checks (listing tables, reading logs) don't need asking. A migration is applied only after its file is in the repo.
+- Anything that changes the **hosted** Supabase project or Vercel, whether through the Supabase or Vercel connector or the CLI: applying migrations, running SQL that changes data, deploying functions, changing secrets or environment variables, deploying the site. Read-only checks (listing tables, reading logs) don't need asking. A migration is applied only after its file is in the repo. Hosted migrations and function deploys are done only from an up-to-date `main` after the PR is merged, never from a branch. Anyone on the team can deploy.
 - Any git command that rewrites or discards history: `reset --hard`, `checkout -- <file>`, `rebase` of pushed commits, `commit --amend` on a pushed commit. **Never force push.**
 
 ---
 
 ## 6. Committing (every commit)
 
-Each cloud session works on its own branch. Commit to that branch, push it, and the change reaches `main` through a pull request. Follow these steps every time.
+Each cloud session works on its own branch. Commit to that branch, push it, and the change reaches `main` through a pull request. PRs are **squash-merged**, so each PR becomes one commit on `main` whose message is the PR title. Follow these steps every time.
 
 1. **Check.** Run the checks that exist for what you changed (section 8). Don't commit if they fail; tell the person instead.
-2. **Update `progress.md`.** Add one entry for this change (section 7). It goes in the same commit.
+2. **Update `progress.md`.** Each PR gets one row (section 7). Add it in the branch's first commit; later commits on the same branch update that row instead of adding another.
 3. **Stage only this task's files, by name.** Never use `git add .`, `git add -A` or `git commit -a`.
 4. **Write the message from `git diff --staged`.** Describe only what the diff actually shows. If the diff contains unrelated changes, suggest splitting them into separate commits.
 5. **STOP AND ASK (Rule 1, never skip).** Show the person the file list and the commit message, then ask both of these together and **wait for the answer**:
@@ -98,7 +98,7 @@ Each cloud session works on its own branch. Commit to that branch, push it, and 
    Don't change `git config`. The `--author` flag credits the right person on a shared setup.
 7. **Push (if asked).** Push the session's branch with `git push -u origin HEAD`. Never push to `main`.
 8. **Remind them to create a PR.** After every push, end your reply with: **"Pushed to `<branch>`. Create a PR into `main` (Create PR in the diff view) and merge it."**
-    - If the PR has conflicts with `main`, rebase the branch on `origin/main` when asked.
+    - If the PR has conflicts with `main`, merge `origin/main` into the branch (`git merge origin/main`) when asked. Never rebase a pushed branch: that needs a force push. The squash merge keeps `main` clean anyway.
     - If `progress.md` conflicts, keep **both** entries, newest first.
     - If code conflicts, stop and show the conflicting files. Don't resolve someone else's code without asking.
 
@@ -114,6 +114,7 @@ Each cloud session works on its own branch. Commit to that branch, push it, and 
 - **summary:** imperative, lower-case, no full stop, 72 characters or fewer. Say what changed in plain words.
 - **body:** only if the reason isn't obvious from the summary.
 - **No** `Co-Authored-By` lines, no "Generated with" lines, no session links, no emoji, no names. The author field already says who did it.
+- **PR titles** use the same `<type>: <summary>` format, because the squash commit on `main` takes the PR title.
 
 | Good | Bad |
 |---|---|
@@ -126,7 +127,7 @@ Each cloud session works on its own branch. Commit to that branch, push it, and 
 
 ## 7. progress.md
 
-Add one row for **every** commit, however small, at the **top** of the log table (newest first).
+Add one row for **every** PR, however small, at the **top** of the log table (newest first). If the branch already has its row, update that row instead of adding a second one.
 
 ```
 | Date | Who | Area | What changed |

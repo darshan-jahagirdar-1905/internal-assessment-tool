@@ -1,6 +1,6 @@
 # Assessment Module — Architecture (V1)
 
-**Status:** Approved scope for V1 · **Last updated:** 15 Oct 2026
+**Status:** Approved scope for V1 · **Last updated:** 16 Oct 2026
 
 ---
 
@@ -264,6 +264,8 @@ grant  execute on function start_attempt(uuid)          to service_role;
 
 There are two functions, each with internal routing (a small router such as Hono, or a `switch` on method and path). The shared code lives in `_shared/`.
 
+In `admin`, `index.ts` is a thin router: it checks the admin password once, then hands the request to a handler in `admin/routes/` (one file per area, for example assessments, employees, invites, reports). No handler runs before the password check. This keeps parallel work on different areas out of one file.
+
 Every function must:
 
 - Return CORS headers for the frontend domain.
@@ -470,7 +472,9 @@ Published assessments are read-only. To change questions, duplicate the assessme
 ├── supabase/
 │   ├── migrations/               # schema, RLS, database functions (SQL)
 │   └── functions/
-│       ├── admin/index.ts
+│       ├── admin/
+│       │   ├── index.ts          # password check, then routes to a handler
+│       │   └── routes/           # one file per area (assessments, employees, invites, reports, ...)
 │       ├── employee/index.ts
 │       └── _shared/              # db.ts, auth.ts, token.ts, email.ts, csv.ts, cors.ts
 └── architecture.md
@@ -480,7 +484,7 @@ Published assessments are read-only. To change questions, duplicate the assessme
 
 ## 11. Team split
 
-Ownership is by module, so a module can move to a different person without changing the design.
+These are modules, not people. Everyone on the team works across all of them, backend included, so anyone can pick up any module.
 
 | Role | Owns |
 |---|---|
@@ -491,8 +495,9 @@ Ownership is by module, so a module can move to a different person without chang
 **Working agreements**
 
 1. Agree on the schema (section 5) and the endpoint list (section 6) in the first days, before feature work. The frontend can then build against mocked responses.
-2. Each session works on its own branch and reaches `main` through a pull request; every change is recorded in `progress.md`. Changes to RLS, tokens or scoring are looked over by one other person before the next pilot or release. Commit and progress rules are in `AGENTS.md`.
-3. Keep one shared staging Supabase project with a seed script (sample assessment and about 20 test employees).
+2. Each session works on its own branch and reaches `main` through a pull request; every change is recorded in `progress.md`. PRs are squash-merged. A PR that touches migrations (schema, RLS, scoring functions), token or auth code, or the `employee` function needs approval from one other teammate (enforced with CODEOWNERS); every other PR merges once its checks pass. Commit and progress rules are in `AGENTS.md`.
+3. Hosted Supabase changes (applying migrations, deploying functions) are made only from `main` after the PR is merged, never from a branch. Anyone on the team can deploy.
+4. Keep one shared staging Supabase project with a seed script (sample assessment and about 20 test employees).
 
 ### Build order
 
