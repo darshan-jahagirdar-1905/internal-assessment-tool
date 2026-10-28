@@ -1,6 +1,6 @@
 # Assessment Module — Architecture (V1)
 
-**Status:** Approved scope for V1 · **Last updated:** 16 Oct 2026
+**Status:** Approved scope for V1 · **Last updated:** 28 Oct 2026
 
 ---
 
@@ -35,25 +35,29 @@ A standalone tool for running internal assessments (for example, *Email Etiquett
 | Layer | Choice | Notes |
 |---|---|---|
 | Frontend | React + Vite + TypeScript, React Router | One app with `/admin/*` and `/t/:token` routes |
-| Backend | Supabase Edge Functions (TypeScript, Deno) | Two functions: `admin` and `employee` |
-| Database | Supabase Postgres | RLS on every table, no direct browser access |
+| Backend | Node + TypeScript API built with Hono, running as Vercel Functions | One app, two route groups: `/api/admin` and `/api/employee` |
+| Database | Supabase, used **only** as managed Postgres | RLS on every table, no direct browser access. No Supabase Auth, Storage, Realtime or `supabase-js` |
+| Database driver | `postgres` (postgres.js) over Supabase's connection pooler | Plain SQL; works with any Postgres host |
 | Email | Resend (free tier) | Sent from a verified company subdomain |
 | CSV/Excel parsing | SheetJS (`xlsx`) in the browser | Server re-validates every row |
-| Hosting | Vercel or Netlify (static frontend) | Edge Functions are hosted by Supabase |
+| Hosting | Vercel (one project, one domain) | Serves the static frontend and the `/api/*` functions. Hobby is for non-commercial use, so plan for Pro |
+| Migrations | Supabase CLI (`supabase/migrations/`) | Plain SQL files |
+
+**Portability:** the Hono app in `server/` uses only web-standard `Request`/`Response` and plain SQL. Only `api/index.ts` knows about Vercel. Moving to another host (Render, Railway, a VPS, any Postgres) means writing a new entry file and changing `DATABASE_URL`, not rewriting the backend.
 
 ### Environment variables
 
 | Variable | Where | Purpose |
 |---|---|---|
-| `VITE_SUPABASE_URL` | Frontend | Project URL |
-| `VITE_SUPABASE_ANON_KEY` | Frontend | Public key. Used **only** to call Edge Functions |
-| `SUPABASE_SERVICE_ROLE_KEY` | Edge Function secrets | Full database access. **Never** in the frontend |
-| `ADMIN_PASSWORD` | Edge Function secrets | Long random string (20+ characters) |
-| `RESEND_API_KEY` | Edge Function secrets | Email sending |
-| `EMAIL_FROM` | Edge Function secrets | e.g. `HR Team <assessments@hr.yourcompany.com>` |
-| `APP_BASE_URL` | Edge Function secrets | Used to build employee links |
+| `DATABASE_URL` | Vercel, server only | Supabase pooler connection string (transaction mode). Full database access. **Never** in the frontend |
+| `ADMIN_PASSWORD` | Vercel, server only | Long random string (20+ characters) |
+| `RESEND_API_KEY` | Vercel, server only | Email sending |
+| `EMAIL_FROM` | Vercel, server only | e.g. `HR Team <assessments@hr.yourcompany.com>` |
+| `APP_BASE_URL` | Vercel, server only | Used to build employee links |
 
-> Anything prefixed `VITE_` is bundled into the browser. Never give the service role key a `VITE_` prefix.
+The frontend needs **no** environment variables: it calls `/api/*` on its own domain.
+
+> Anything prefixed `VITE_` is bundled into the browser. Never give a server variable a `VITE_` prefix.
 
 ---
 
@@ -61,16 +65,16 @@ A standalone tool for running internal assessments (for example, *Email Etiquett
 
 ```mermaid
 flowchart LR
-    Admin["Admin browser<br/>/admin"] -->|"x-admin-password"| AF["Edge Function: admin"]
-    Emp["Employee browser<br/>/t/:token"] -->|"x-assessment-token"| EF["Edge Function: employee"]
-    AF -->|"service role"| DB[("Supabase Postgres<br/>RLS: no public access")]
-    EF -->|"service role"| DB
+    Admin["Admin browser<br/>/admin"] -->|"x-admin-password"| AF["API: /api/admin"]
+    Emp["Employee browser<br/>/t/:token"] -->|"x-assessment-token"| EF["API: /api/employee"]
+    AF -->|"DATABASE_URL"| DB[("Supabase Postgres<br/>RLS: no public access")]
+    EF -->|"DATABASE_URL"| DB
     AF -->|"send invite"| RS["Resend"]
     RS -->|"email with personal link"| Inbox["Employee inbox"]
     Inbox --> Emp
 ```
 
-The browser never reads or writes database tables. Every request goes through an Edge Function, which checks the admin password or the employee's link token first.
+The site and the API are served by Vercel from one domain. The browser never reads or writes database tables. Every request goes through the API, which checks the admin password or the employee's link token first.
 
 ---
 
@@ -217,7 +221,7 @@ Status values shown in the UI that are not stored:
 
 ### 5.2 Row Level Security
 
-**Rule: the public (anon) key can read and write nothing.** RLS is enabled on every table and **no policies are created on purpose**. Only Edge Functions, using the service role key, can access data. The service role key bypasses RLS.
+**Rule: the public (anon) key can read and write nothing.** RLS is enabled on every table and **no policies are created on purpose**. Only the API can access data. It connects with `DATABASE_URL` as the owner role (`postgres`), which owns the tables and bypasses RLS, so `DATABASE_URL` is as sensitive as a service role key. The app never uses Supabase's own Data API or the anon key; turn the Data API off in Supabase settings, and keep the revokes below anyway.
 
 ```sql
 -- 1. Enable RLS on every table. No policies = no access for anon/authenticated.
@@ -240,12 +244,12 @@ alter default privileges in schema public revoke all on sequences from anon, aut
 alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
 ```
 
-**Database functions are the most common RLS leak.** Postgres lets everyone execute a new function by default, and Supabase exposes functions as API endpoints. A `security definer` function also bypasses RLS. For every function you create:
+**Database functions are the most common RLS leak.** Postgres lets everyone execute a new function by default, and Supabase's Data API exposes functions as endpoints. A `security definer` function also bypasses RLS. For every function you create:
 
 ```sql
 revoke execute on function start_attempt(uuid)          from public, anon, authenticated;
-grant  execute on function start_attempt(uuid)          to service_role;
--- repeat for submit_attempt, auto_submit_overdue, and any other function
+-- repeat for submit_attempt, auto_submit_overdue, and any other function.
+-- No grant is needed: the API connects as the owner role, which can always execute.
 ```
 
 #### RLS verification checklist (run before every release)
@@ -254,25 +258,26 @@ grant  execute on function start_attempt(uuid)          to service_role;
 - [ ] Using only the anon key, `select * from <table>` returns an error or zero rows for **each** of the 8 tables.
 - [ ] Using only the anon key, `insert`/`update`/`delete` fails on each table.
 - [ ] Using only the anon key, calling each database function through `rpc()` returns *permission denied*.
-- [ ] The frontend build contains no service role key (search the built JS for `service_role` and the key prefix).
+- [ ] The frontend build contains no server secrets (search the built JS for `postgres://`, `DATABASE_URL`, `ADMIN_PASSWORD` and the Resend key prefix).
 - [ ] In the browser network tab during an attempt, no response contains `is_correct` or `points_awarded`.
 - [ ] Calling the employee function with employee A's token never returns employee B's data.
 
 ---
 
-## 6. Edge Functions
+## 6. API
 
-There are two functions, each with internal routing (a small router such as Hono, or a `switch` on method and path). The shared code lives in `_shared/`.
+One Hono app (`server/app.ts`) with two route groups: `/api/admin` and `/api/employee`. Vercel runs it through a single entry file, `api/index.ts`. Shared code (database, auth, tokens, email, CSV) lives in `server/lib/`.
 
-In `admin`, `index.ts` is a thin router: it checks the admin password once, then hands the request to a handler in `admin/routes/` (one file per area, for example assessments, employees, invites, reports). No handler runs before the password check. This keeps parallel work on different areas out of one file.
+Each group has a thin `index.ts` that runs its check once as middleware (admin password, or link token), then hands the request to a handler in its `routes/` folder (one file per area, for example assessments, employees, invites, reports). No handler runs before that check. This keeps parallel work on different areas out of one file.
 
-Every function must:
+Every route must:
 
-- Return CORS headers for the frontend domain.
-- Validate the request body before using it.
-- Never return `options.is_correct`, `answers.is_correct` or `answers.points_awarded` from the **employee** function.
+- Validate the request body with Zod before using it.
+- Never return `options.is_correct`, `answers.is_correct` or `answers.points_awarded` from the **employee** group.
 
-### 6.1 `admin` (header `x-admin-password`)
+The site and the API share one domain, so no CORS headers are sent. Paths in the tables below are relative to their group (e.g. `GET /assessments` is `GET /api/admin/assessments`).
+
+### 6.1 `/api/admin` (header `x-admin-password`)
 
 The first step of every request is a constant-time comparison of the header with `ADMIN_PASSWORD`. If it doesn't match, the function returns 401. The frontend asks for the password once and keeps it in `sessionStorage`, so it is cleared when the tab closes.
 
@@ -298,7 +303,7 @@ The first step of every request is a constant-time comparison of the header with
 | `GET /assessments/:id/stats` | Assigned, completed, passed, pass rate, average score, % correct per question |
 | `GET /assessments/:id/export` | CSV of results (see 7.8) |
 
-### 6.2 `employee` (header `x-assessment-token`)
+### 6.2 `/api/employee` (header `x-assessment-token`)
 
 The first step of every request is to hash the token, find the assignment by `token_hash`, and reject the request if the token is not found or is revoked. Every query after that is filtered by **that** assignment's id. The function never accepts an employee id or assignment id from the browser.
 
@@ -336,7 +341,7 @@ The first step of every request is to hash the token, find the assignment by `to
 
 ### 7.3 Attempts
 
-Implement starting and submitting as Postgres functions (`start_attempt`, `submit_attempt`) called with `rpc()` from the Edge Function. `supabase-js` cannot run multi-step transactions, but a database function always runs as one transaction.
+Implement starting and submitting as Postgres functions (`start_attempt`, `submit_attempt`) that the API calls with plain SQL (`select * from start_attempt($1)`). A database function always runs as one transaction, and keeping the rules in one place means every caller gets the same behaviour.
 
 **`start_attempt(assignment_id)`**
 
@@ -422,8 +427,8 @@ Published assessments are read-only. To change questions, duplicate the assessme
 | Area | Rule |
 |---|---|
 | Database access | RLS on all tables, no policies, privileges revoked from anon and authenticated (5.2) |
-| Database functions | `execute` revoked from public, anon and authenticated; granted only to service_role |
-| Keys | Service role key only in Edge Function secrets |
+| Database functions | `execute` revoked from public, anon and authenticated; only the owner role used by the API can run them |
+| Keys | `DATABASE_URL` and other server secrets only in Vercel server environment variables; the frontend has none |
 | Admin | One long random password; constant-time comparison; checked on every admin request |
 | Employees | Hashed, revocable, per-assignment tokens; every query scoped to that assignment |
 | Answer key | Never returned by the employee function; scoring runs in the database |
@@ -469,14 +474,21 @@ Published assessments are read-only. To change questions, duplicate the assessme
 │       ├── api/                  # adminApi.ts, employeeApi.ts (fetch wrappers)
 │       ├── components/
 │       └── lib/                  # csv parsing, formatting
+├── api/
+│   └── index.ts                  # Vercel entry: hands every /api/* request to the Hono app
+├── server/                       # the Hono app; no Vercel-specific code
+│   ├── app.ts                    # mounts /api/admin and /api/employee
+│   ├── admin/
+│   │   ├── index.ts              # password check, then routes to a handler
+│   │   └── routes/               # one file per area (assessments, employees, invites, reports, ...)
+│   ├── employee/
+│   │   ├── index.ts              # token check, then routes to a handler
+│   │   └── routes/
+│   └── lib/                      # db.ts, auth.ts, token.ts, email.ts, csv.ts
 ├── supabase/
-│   ├── migrations/               # schema, RLS, database functions (SQL)
-│   └── functions/
-│       ├── admin/
-│       │   ├── index.ts          # password check, then routes to a handler
-│       │   └── routes/           # one file per area (assessments, employees, invites, reports, ...)
-│       ├── employee/index.ts
-│       └── _shared/              # db.ts, auth.ts, token.ts, email.ts, csv.ts, cors.ts
+│   └── migrations/               # schema, RLS, database functions (SQL)
+├── package.json                  # API dependencies (web/ has its own)
+├── vercel.json                   # build web/, route /api/* to api/index.ts
 └── architecture.md
 ```
 
@@ -488,15 +500,15 @@ These are modules, not people. Everyone on the team works across all of them, ba
 
 | Role | Owns |
 |---|---|
-| **Backend** | Migrations (schema, RLS, revokes), `start_attempt` / `submit_attempt` / `auto_submit_overdue`, `admin` and `employee` Edge Functions (except email and CSV), token handling, RLS verification checklist |
+| **Backend** | Migrations (schema, RLS, revokes), `start_attempt` / `submit_attempt` / `auto_submit_overdue`, `/api/admin` and `/api/employee` routes (except email and CSV), token handling, RLS verification checklist |
 | **Frontend** | All admin screens (password gate, assessment and question editor, employee list, assign, tracking, reports, stats) and all employee screens (landing, questions with autosave, submit confirm, result, invalid link). Mobile-friendly take flow |
 | **Integrations** | Resend setup (domain verification with IT, templates, invite and resend sending, failure handling), employee CSV/Excel import (browser parsing and server validation), results CSV export |
 
 **Working agreements**
 
 1. Agree on the schema (section 5) and the endpoint list (section 6) in the first days, before feature work. The frontend can then build against mocked responses.
-2. Each session works on its own branch and reaches `main` through a pull request; every change is recorded in `progress.md`. PRs are squash-merged. A PR that touches migrations (schema, RLS, scoring functions), token or auth code, or the `employee` function needs approval from one other teammate (enforced with CODEOWNERS); every other PR merges once its checks pass. Commit and progress rules are in `AGENTS.md`.
-3. Hosted Supabase changes (applying migrations, deploying functions) are made only from `main` after the PR is merged, never from a branch. Anyone on the team can deploy.
+2. Each session works on its own branch and reaches `main` through a pull request; every change is recorded in `progress.md`. PRs are squash-merged. A PR that touches migrations (schema, RLS, scoring functions), token or auth code, or the `/api/employee` routes needs approval from one other teammate (enforced with CODEOWNERS); every other PR merges once its checks pass. Commit and progress rules are in `AGENTS.md`.
+3. Hosted changes (applying migrations to Supabase, production deploys on Vercel) are made only from `main` after the PR is merged, never from a branch. Vercel preview deployments of branches are fine, but they share the staging database, so a branch never applies its own migrations to it. Anyone on the team can deploy.
 4. Keep one shared staging Supabase project with a seed script (sample assessment and about 20 test employees).
 
 ### Build order
@@ -538,7 +550,7 @@ These are modules, not people. Everyone on the team works across all of them, ba
 ### What V1 already does that keeps this open
 
 - **`employee_code` is the identity**, unique and stored as text. It will be the join key with the HRMS. Email is only a contact field.
-- **All access goes through Edge Functions.** V2 can add a third function (e.g. `hrms`) without touching the browser or the existing two.
+- **All access goes through the API.** V2 can add a third route group (e.g. `/api/hrms`) without touching the browser or the existing two.
 - **Employee upsert happens in one place.** HRMS sync can reuse it instead of writing a second path into `employees`.
 - **Scoring and submitting live in one database function** (`submit_attempt`). V2 can send results from that single point.
 - **Attempts are never overwritten** and `activity_log` records each submit, so past results can be backfilled to the HRMS.
@@ -548,6 +560,6 @@ These are modules, not people. Everyone on the team works across all of them, ba
 These match how V1 is already designed. They are listed so they stay true:
 
 1. Never use email or name to identify an employee in code; use `employees.id` internally and `employee_code` for anything external.
-2. Keep the link-token check in one shared module (`_shared/auth.ts`), so V2 can add a login-based check beside it.
+2. Keep the link-token check in one shared module (`server/lib/auth.ts`), so V2 can add a login-based check beside it.
 3. Keep employee creation and updates in one shared function used by the CSV import.
 4. Write V2 changes as **new** migrations that add tables or columns. V1 tables and data are never reshaped or dropped for HRMS.

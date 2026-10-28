@@ -57,14 +57,14 @@ If the committing person's email is blank, ask for it once and add it to this ta
 1. **Never commit or push without asking first** (Rule 1 at the top of this file).
 2. **Never push to `main` directly.** Push your own branch; changes reach `main` only through a pull request (section 6).
 3. **RLS stays on every table, with no policies for public access.** The `anon` and `authenticated` roles get no table or function privileges.
-4. **The browser never queries tables directly.** All data goes through the `admin` and `employee` Edge Functions.
-5. **The service role key is only in Edge Function secrets.** Never in frontend code, never with a `VITE_` prefix, never committed.
-6. **The `employee` function never returns `options.is_correct`, `answers.is_correct` or `answers.points_awarded`.** Employees see only score and pass/fail.
-7. **Every `employee` function query is filtered by the assignment found from the link token.** It never accepts an employee id or assignment id from the browser.
+4. **The browser never queries tables directly.** All data goes through the `/api/admin` and `/api/employee` routes.
+5. **`DATABASE_URL` and other server secrets are only in Vercel server environment variables.** Never in frontend code, never with a `VITE_` prefix, never committed.
+6. **The `/api/employee` routes never return `options.is_correct`, `answers.is_correct` or `answers.points_awarded`.** Employees see only score and pass/fail.
+7. **Every `/api/employee` query is filtered by the assignment found from the link token.** It never accepts an employee id or assignment id from the browser.
 8. **Every admin request checks the admin password first.**
-9. **Every new database function gets** `revoke execute ... from public, anon, authenticated` and `grant execute ... to service_role`.
+9. **Every new database function gets** `revoke execute ... from public, anon, authenticated`. The API connects as the owner role, so no grant is needed.
 10. **Schema changes are new migration files.** Never edit a migration that has already been applied or committed.
-11. **Secrets never go in the repo or in the cloud session's environment variables.** Frontend values (`VITE_*`, public only) live in Vercel. Server secrets (service role key, admin password, Resend key) live in Supabase Edge Function secrets, set by a person. `.env*` files stay in `.gitignore`, except `.env.example`. The repo is public.
+11. **Secrets never go in the repo or in the cloud session's environment variables.** Server secrets (`DATABASE_URL`, admin password, Resend key) live in Vercel environment variables without a `VITE_` prefix, set by a person. The frontend needs no environment variables. `.env*` files stay in `.gitignore`, except `.env.example`. The repo is public.
 12. **Published assessments are read-only.** Changes go through "duplicate as new draft".
 
 ---
@@ -75,7 +75,7 @@ If the committing person's email is blank, ask for it once and add it to this ta
 - Adding or removing a dependency.
 - Deleting or renaming files outside the task.
 - Reading or changing `.env` files or secrets.
-- Anything that changes the **hosted** Supabase project or Vercel, whether through the Supabase or Vercel connector or the CLI: applying migrations, running SQL that changes data, deploying functions, changing secrets or environment variables, deploying the site. Read-only checks (listing tables, reading logs) don't need asking. A migration is applied only after its file is in the repo. Hosted migrations and function deploys are done only from an up-to-date `main` after the PR is merged, never from a branch. Anyone on the team can deploy.
+- Anything that changes the **hosted** Supabase project or Vercel, whether through the Supabase or Vercel connector or the CLI: applying migrations, running SQL that changes data, deploying functions, changing secrets or environment variables, deploying the site. Read-only checks (listing tables, reading logs) don't need asking. A migration is applied only after its file is in the repo. Hosted migrations and production deploys are done only from an up-to-date `main` after the PR is merged, never from a branch. Anyone on the team can deploy.
 - Any git command that rewrites or discards history: `reset --hard`, `checkout -- <file>`, `rebase` of pushed commits, `commit --amend` on a pushed commit. **Never force push.**
 
 ---
@@ -120,7 +120,7 @@ Each cloud session works on its own branch. Commit to that branch, push it, and 
 |---|---|
 | `feat: save each answer as soon as it is selected` | `feat: autosave` (too vague) |
 | `fix: block answer saves after the due date` | `fixed stuff` (no type, no detail) |
-| `chore: add zod to edge functions` | `feat: improve architecture and add many improvements` (vague, inflated) |
+| `chore: add zod to the api` | `feat: improve architecture and add many improvements` (vague, inflated) |
 | `docs: describe on-demand auto-submit in architecture` | `update` (says nothing) |
 
 ---
@@ -154,23 +154,22 @@ npm run build            # typecheck + production build
 npm run lint
 npm run typecheck        # tsc -b (plain `tsc --noEmit` checks nothing with this tsconfig layout)
 
-# Supabase (local, run from the repo root; needs Docker for `start`)
-supabase start                       # local Postgres + functions
+# API (repo root): commands are added by the API scaffold PR
+
+# Database (Supabase CLI, run from the repo root; needs Docker for `start`)
+supabase start                       # local Postgres
 supabase migration new <name>        # new migration file
 supabase db reset                    # re-apply all migrations locally (wipes LOCAL data only)
-supabase functions serve --env-file supabase/functions/.env   # run edge functions locally
 ```
 
-Local env files: copy `web/.env.example` to `web/.env.local` and `supabase/functions/.env.example` to `supabase/functions/.env`. Both copies are git-ignored.
+**Hosted Supabase and Vercel:** use the Supabase and Vercel connectors. Ask before any change (section 5). Resend and other integrations are written in code, not used through connectors. Supabase is used only as the database. Vercel's project root is the repo root: it builds `web/` and serves the API from `api/`.
 
-**Hosted Supabase and Vercel:** use the Supabase and Vercel connectors. Ask before any change (section 5). Resend and other integrations are written in code, not used through connectors. Vercel's project root is `web/`.
-
-**Cloud sessions:** Deno and the Supabase CLI aren't pre-installed, but both run through npx: `npx -y deno@2.3.1 ...` and `npx -y supabase@2.48.3 ...`. `supabase start` / `db reset` still need Docker. If a check below needs a tool that isn't available, say which check you couldn't run instead of skipping it silently.
+**Cloud sessions:** the Supabase CLI isn't pre-installed, but it runs through npx: `npx -y supabase@2.48.3 ...`. `supabase start` / `db reset` still need Docker. If a check below needs a tool that isn't available, say which check you couldn't run instead of skipping it silently.
 
 **Checks before committing**
 
 - Frontend change (in `web/`): `npm run typecheck`, `npm run lint`, `npm run build`
-- Edge Function change: `deno check supabase/functions/<name>/index.ts`
+- API change (`api/`, `server/`): typecheck and lint at the repo root (commands added by the API scaffold PR)
 - SQL change: `supabase db reset` succeeds, and the RLS checklist in `architecture.md` section 5.2 still passes
 
 ---
@@ -178,8 +177,8 @@ Local env files: copy `web/.env.example` to `web/.env.local` and `supabase/funct
 ## 9. Conventions
 
 - **TypeScript strict mode.** Avoid `any`; if it's unavoidable, add a comment saying why.
-- **Edge Functions:** validate every request body with Zod. Shared code (database client, auth, tokens, email, CSV, CORS) lives in `supabase/functions/_shared/`.
-- **Database logic that must be atomic** (starting, submitting, auto-submitting attempts) lives in Postgres functions called with `rpc()`.
-- **Frontend:** all server calls go through `web/src/api/adminApi.ts` and `web/src/api/employeeApi.ts`. Never use `supabase-js` to read tables from the browser.
+- **API:** a Hono app in `server/`. Validate every request body with Zod. Shared code (database client, auth, tokens, email, CSV) lives in `server/lib/`. Only `api/index.ts` may import Vercel-specific code.
+- **Database logic that must be atomic** (starting, submitting, auto-submitting attempts) lives in Postgres functions that the API calls with plain SQL.
+- **Frontend:** all server calls go through `web/src/api/adminApi.ts` and `web/src/api/employeeApi.ts`. The frontend never connects to Supabase or the database.
 - **Folder structure** follows `architecture.md` section 10.
 - Keep changes small and focused. One logical change per commit.
