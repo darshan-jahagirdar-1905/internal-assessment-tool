@@ -1,6 +1,6 @@
 # Learning Platform — Architecture (V1 pilot)
 
-**Status:** Approved scope for the V1 pilot · **Last updated:** 2 Nov 2026
+**Status:** Approved scope for the V1 pilot · **Last updated:** 3 Nov 2026
 
 ---
 
@@ -12,7 +12,7 @@ The first course is *Email Etiquette*, built from a YouTube video.
 
 ### In scope (V1 pilot)
 
-- Sign-in for employees and admins with a company account. **The sign-in method is not decided yet** (section 4.3); everything else is built so it plugs in later.
+- Sign-in for employees and admins with their company email, through **WorkOS AuthKit** (a 6-digit code sent by email; section 4.3)
 - Course catalog, self-enrollment, and admin assignment by email
 - Courses made of ordered YouTube videos plus one assessment
 - Watch tracking: each video must reach 80%, in order, before the next unlocks
@@ -24,7 +24,7 @@ The first course is *Email Etiquette*, built from a YouTube video.
 
 ### Out of scope (V1 pilot)
 
-- Any email (invites, reminders, notifications). Only sign-in may need email, depending on section 4.3
+- Any email we send ourselves (invites, reminders, notifications). Sign-in codes are sent by WorkOS
 - Employee CSV upload
 - Retakes (kept as a setting, fixed at 1)
 - Video hosts other than YouTube, documents or slides as lessons
@@ -42,7 +42,7 @@ The first course is *Email Etiquette*, built from a YouTube video.
 | API | Node + TypeScript, built with Hono, running as Vercel Functions | Same domain as the site, under `/api/*`. Zod validates every request body |
 | Database | Supabase, used **only** as managed Postgres | RLS on every table, no direct browser access. No Supabase Storage, Realtime or table access from `supabase-js` |
 | Database driver | `postgres` (postgres.js) over Supabase's connection pooler | Plain SQL; works with any Postgres host |
-| Sign-in | **Not decided** (section 4.3) | Behind one "who is this?" step in the API, so it can be swapped |
+| Sign-in | WorkOS AuthKit, Magic Auth only (`@workos-inc/node` in the API) | WorkOS hosts the sign-in page and emails the codes from its own domain, so no DNS is needed. Free up to 1M monthly users. Behind one "who is this?" step in the API |
 | Video | YouTube embedded player (IFrame Player API, `youtube-nocookie.com`) | Watch progress is read from the player |
 | Hosting | Vercel (one project, one domain), function region `bom1` (Mumbai) | Same region as the database. Hobby is for non-commercial use, so move to Pro before rollout |
 | Migrations | Supabase CLI (`supabase/migrations/`) | Plain SQL files |
@@ -56,9 +56,12 @@ The first course is *Email Etiquette*, built from a YouTube video.
 | `DATABASE_URL` | Vercel, server only, Sensitive | Supabase pooler connection string (transaction mode, port 6543). Full database access. **Never** in the frontend |
 | `APP_BASE_URL` | Vercel, server only | The site's public URL |
 | `ALLOWED_EMAIL_DOMAINS` | Vercel, server only | Comma-separated company domains allowed to sign in, e.g. `transfunnel.com` |
+| `WORKOS_API_KEY` | Vercel, server only, Sensitive | WorkOS secret key (`sk_…`) |
+| `WORKOS_CLIENT_ID` | Vercel, server only | WorkOS client id (`client_…`) |
+| `WORKOS_COOKIE_PASSWORD` | Vercel, server only, Sensitive | 32+ random characters; encrypts the session cookie |
 | `TEST_SIGNIN` | Vercel **Preview only**, and local | `on` enables test sign-in (section 4.2). Ignored in production |
 
-Variables for the sign-in method are added when it is chosen. `ADMIN_PASSWORD` from the earlier design is no longer used.
+The WorkOS variables are needed in Production (and locally if you test real sign-in); previews use test sign-in. `ADMIN_PASSWORD`, `SUPABASE_SECRET`, `PUBLISHABLE_KEY` and `PROJECT_URL` are not used by this design.
 
 The frontend needs **no** environment variables. Anything prefixed `VITE_` is bundled into the browser, so never give a server variable a `VITE_` prefix.
 
@@ -72,7 +75,9 @@ flowchart LR
     Admin["Admin browser /admin"] -->|"signed-in session, admin role"| API
     Emp -->|"embedded player"| YT["YouTube"]
     API -->|"DATABASE_URL"| DB[("Supabase Postgres, Mumbai<br/>RLS on, no policies")]
-    API -.->|"sign-in (to be decided)"| IdP["Sign-in provider"]
+    Emp -->|"sign-in page, 6-digit code"| WOS["WorkOS AuthKit"]
+    WOS -->|"redirect with one-time code"| API
+    API -->|"exchange code, refresh session"| WOS
 ```
 
 ```
@@ -91,34 +96,63 @@ The browser never reads or writes database tables. Every request goes through th
 Every API request (except `GET /api/health`) first calls `getCurrentUser()` in `server/lib/identity.ts`. It returns the signed-in user's row from `users`, or nothing.
 
 - Employee routes require a user. Admin routes require a user with `role = 'admin'`.
-- No other code knows how sign-in works. Choosing the sign-in method later means changing only `identity.ts` and the sign-in pages.
+- No other code knows how sign-in works. Changing sign-in method later (for example, adding Microsoft sign-in) means changing only `identity.ts` and the `server/auth/` routes.
 - The browser never sends a user id. Everything is scoped to the user `getCurrentUser()` returns.
 
-**Users are ours, not the sign-in provider's.** The `users` table holds email, name and role. The provider's account id goes into `users.auth_subject` when real sign-in exists. A user is matched by email (trimmed, lower-case) on first sign-in.
+**Users are ours, not WorkOS's.** The `users` table holds email, name and role. The WorkOS user id goes into `users.auth_subject`. On first sign-in a user is matched by email (trimmed, lower-case); after that, by `auth_subject`.
 
 - Only addresses in `ALLOWED_EMAIL_DOMAINS` can sign in or be assigned.
 - A person assigned by email before they ever sign in gets a `users` row straight away. Their enrollment is waiting for them when they first sign in.
 - The first admin is set by a person with one SQL statement after the first migration (`update users set role = 'admin' where email = …`). After that, admins promote others from the admin screens.
 
-### 4.2 Test sign-in (until 4.3 is decided)
+### 4.2 Test sign-in (previews and local only)
 
-So the team can build and test everything before real sign-in exists:
+So the team can build and test everything without WorkOS, and on preview deployments (whose addresses change, so they can't be registered with WorkOS):
 
 - **Enabled only when both are true:** `TEST_SIGNIN = on`, and the deployment is not production (`VERCEL_ENV` is `preview`, or the app is running locally). In production it is off whatever the variables say, and the app shows "Sign-in is not available yet".
 - On a preview deployment, the sign-in page offers "Test sign-in": enter an allowed email address. The browser then sends it as the `x-test-user` header, and `identity.ts` loads (or creates) that user.
 - Preview deployments are behind Vercel login (Standard Protection), so only the team can reach them.
-- **Known risk:** previews and production share one database, so test sign-in can act as any user on preview. That is acceptable only while there is no real data. **Real sign-in must replace it before the pilot.**
+- **Known risk:** previews and production share one database, so test sign-in can act as any user on preview. That is acceptable only while there is no real data. **Before the pilot, either give previews their own database or turn `TEST_SIGNIN` off.**
 
-### 4.3 Real sign-in: options (on hold)
+### 4.3 Real sign-in: WorkOS AuthKit
 
-| Option | Summary | Blocker |
-|---|---|---|
-| A. Sign in with Microsoft (Supabase Auth, single tenant) | No emails; only company accounts get in | An app must be registered in Microsoft Entra |
-| B. Magic links (Supabase Auth or our own) through Resend, from a separately bought domain (about $11/year on Vercel) | Works without IT | The link must open a page with a confirm button (email scanners use up one-time links). Emails come from a non-company domain |
+**Decision:** WorkOS AuthKit with **Magic Auth only** (no passwords, no social sign-in for now). The person enters their email on the WorkOS-hosted page, WorkOS emails a 6-digit code (valid 10 minutes), and the person types it in. A code is not used up by email scanners the way a one-time link is.
 
-Not usable: Resend from `transfunnel.com` (no DNS access), Supabase's built-in email (about 2 per hour, team members only), Microsoft 365 SMTP with a password (switched off by default from end of Dec 2026).
+Chosen because we can't add DNS records to `transfunnel.com`, so we can't send email ourselves. Rejected: Resend or Supabase Auth email (need DNS or are capped at about 2 emails/hour), Clerk (production needs our own domain's DNS), Firebase (5 sign-in emails/day on the free plan), email and password without verification (anyone could sign in as anyone).
 
-Whichever is chosen: the API verifies the provider's token or session itself, data still flows only through the API, and the provider id is stored in `users.auth_subject`.
+**Flow**
+
+```
+/signin ─► GET /api/auth/signin ─► WorkOS page: email ─► code by email ─► enter code
+       ─► GET /api/auth/callback?code&state ─► API exchanges the code with WorkOS
+       ─► domain check ─► upsert users ─► encrypted session cookie ─► redirect to /
+```
+
+1. `GET /api/auth/signin` creates a random `state`, stores it in a short-lived HttpOnly cookie, and redirects to the WorkOS authorization URL (provider `authkit`, redirect `{APP_BASE_URL}/api/auth/callback`).
+2. `GET /api/auth/callback` checks `state` against the cookie, then calls `authenticateWithCode` with sealing on. WorkOS returns the user (id, email, name, email verified) and an encrypted ("sealed") session.
+3. **Domain check:** the email's domain must be in `ALLOWED_EMAIL_DOMAINS`, and the email must be verified. Otherwise no session is created and the person sees "Use your company email".
+4. The API upserts the `users` row (match `auth_subject`, else email), sets `auth_subject` and `first_signed_in_at`, and logs `user.signed_in`.
+5. It sets the session cookie `wos-session`: HttpOnly, Secure, `SameSite=Lax`, `Path=/`, and redirects to `/`.
+6. On every request, `getCurrentUser()` opens the sealed session with `WORKOS_COOKIE_PASSWORD`. If the access token has expired it refreshes it with WorkOS and re-sets the cookie; if the refresh fails, the user is signed out. It then loads the `users` row by `auth_subject`.
+7. `POST /api/auth/signout` clears the cookie and redirects to WorkOS's logout URL, which ends the WorkOS session too.
+
+**Rules**
+
+- The browser never sees WorkOS tokens; it only holds the encrypted, HttpOnly cookie.
+- Because the session is a cookie, every non-GET API request must carry an `Origin` header equal to `APP_BASE_URL`, or it is refused (protection against cross-site requests), on top of `SameSite=Lax`.
+- Roles live in our `users` table, not in WorkOS.
+- WorkOS may create its own user record for someone outside the allowed domains before our callback refuses them. They get no access to our app; such records can be deleted in the WorkOS dashboard. If WorkOS offers a domain restriction setting, turn it on as well.
+- WorkOS stores names and emails, likely in the US. Confirm this is acceptable before the pilot (section 13, step 10).
+
+**WorkOS dashboard setup (done by a person)**
+
+- Authentication methods: **Magic Auth on**; passwords and social sign-in off.
+- Redirect URI: `https://internal-assessment-tool.vercel.app/api/auth/callback` (production environment). For local testing of real sign-in, add `http://localhost:5173/api/auth/callback` in the WorkOS staging environment and use its keys locally.
+- Sign-out redirect: `https://internal-assessment-tool.vercel.app/signin`.
+- Branding: company name and logo on the hosted page.
+- Session length: set in the WorkOS dashboard; a person who leaves can't receive new codes once their mailbox is closed, and their session ends at that limit.
+
+**Later:** "Sign in with Microsoft" can be switched on in WorkOS once IT registers an app in Microsoft Entra. Nothing else changes.
 
 ---
 
@@ -165,7 +199,7 @@ create table users (
   role                text not null default 'learner'
                       check (role in ('learner', 'admin')),
   employee_code       text unique,                   -- optional; HRMS join key later (section 15)
-  auth_subject        text unique,                   -- sign-in provider's id, set when real sign-in exists
+  auth_subject        text unique,                   -- WorkOS user id, set on first real sign-in
   first_signed_in_at  timestamptz,
   created_at          timestamptz not null default now()
 );
@@ -324,7 +358,6 @@ revoke execute on function start_attempt(uuid) from public, anon, authenticated;
 -- repeat for every function. No grant is needed: the API connects as the owner role.
 ```
 
-If Supabase Auth is chosen in section 4.3, its tables live in the `auth` schema; nothing in `public` changes and no policies are added.
 
 #### RLS verification checklist (run before every release)
 
@@ -336,25 +369,38 @@ If Supabase Auth is chosen in section 4.3, its tables live in the `auth` schema;
 - [ ] In the browser network tab during a course, no response contains `is_correct`, `points_awarded`, `passed` or `pass_percentage`.
 - [ ] Signed in as learner A, no request returns learner B's enrollments, progress or attempts.
 - [ ] On the production URL, test sign-in is refused.
+- [ ] Signing in with an email outside `ALLOWED_EMAIL_DOMAINS` creates no session.
+- [ ] A POST to the API from another origin is refused.
 
 ---
 
 ## 7. API
 
-One Hono app (`server/app.ts`), run on Vercel through a single entry file, `api/index.ts`. Shared code lives in `server/lib/` (`db.ts`, `identity.ts`, `youtube.ts`, `csv.ts`).
+One Hono app (`server/app.ts`), run on Vercel through a single entry file, `api/index.ts`. Shared code lives in `server/lib/` (`db.ts`, `identity.ts`, `workos.ts`, `youtube.ts`, `csv.ts`).
+
+- **Sign-in routes:** `/api/auth/*`, in `server/auth/`. No sign-in required.
 
 - **Learner routes:** `/api/*`, in `server/learner/`. Middleware: a signed-in user is required.
 - **Admin routes:** `/api/admin/*`, in `server/admin/`. Middleware: a signed-in user with `role = 'admin'` is required.
 - Each group has a thin `index.ts` that runs its check once, then hands off to a handler in its `routes/` folder (one file per area). No handler runs before the check.
 - Every route validates its request body with Zod.
 - Learner routes **never** return `options.is_correct`, `answers.is_correct`, `answers.points_awarded`, `attempts.passed` or `courses.pass_percentage`.
-- The site and the API share one domain, so no CORS headers are sent.
+- The site and the API share one domain, so no CORS headers are sent. Every non-GET request must have `Origin` equal to `APP_BASE_URL`.
 
 ### 7.1 Public
 
 | Method & path | Purpose |
 |---|---|
 | `GET /api/health` | `{ ok, db }`: checks the database connection. No data |
+
+### 7.1a Sign-in (`/api/auth`)
+
+| Method & path | Purpose |
+|---|---|
+| `GET /auth/signin` | Redirect to the WorkOS sign-in page (section 4.3) |
+| `GET /auth/callback` | WorkOS returns here; exchange the code, check the domain, create the session cookie, redirect to `/` |
+| `POST /auth/signout` | Clear the session cookie and redirect to WorkOS's logout URL |
+| `POST /auth/test-signin` | Preview and local only (section 4.2) |
 
 ### 7.2 Learner (`/api`)
 
@@ -400,7 +446,7 @@ Every route checks that the course, video or attempt belongs to an enrollment of
 
 | Route | Screen |
 |---|---|
-| `/signin` | Sign-in (test sign-in on preview until section 4.3 is decided) |
+| `/signin` | "Sign in with your company email" button (goes to `/api/auth/signin`); on previews, test sign-in instead. Shows "Use your company email" after a refused domain |
 | `/` | Dashboard: my courses (progress, score) and the course list |
 | `/courses/:id` | Course page: video list with progress and locks, the assessment card |
 | `/courses/:id/videos/:videoId` | Video player with progress bar ("Watched 64% — 80% unlocks the next step") |
@@ -485,15 +531,16 @@ Published courses are read-only. To change videos or questions, duplicate the co
 |---|---|
 | Database access | RLS on all tables, no policies, privileges revoked from anon and authenticated (6.2) |
 | Database functions | `execute` revoked from public, anon and authenticated; only the owner role used by the API can run them |
-| Secrets | `DATABASE_URL` and sign-in secrets only in Vercel server variables; the frontend has none; the repo is public |
+| Secrets | `DATABASE_URL`, `WORKOS_API_KEY` and `WORKOS_COOKIE_PASSWORD` only in Vercel server variables; the frontend has none; the repo is public |
+| Sign-in | WorkOS Magic Auth codes; company domains only; encrypted HttpOnly `SameSite=Lax` session cookie; `state` checked on callback; `Origin` checked on every non-GET request |
 | Identity | One `getCurrentUser()` step on every request; learners only ever see their own data; admin routes need `role = 'admin'` |
-| Test sign-in | Preview and local only; never in production; removed or disabled before the pilot |
+| Test sign-in | Preview and local only; never in production; turned off (or previews given their own database) before the pilot |
 | Answer key | Never returned to learners; scoring runs in the database |
 | Results | Learners see their score only |
 | Watch tracking | Server-side limit on credit per report; video order enforced on the server |
 | Files | Export escaped against formula injection |
 | Transport | HTTPS only; `Referrer-Policy: strict-origin-when-cross-origin`; the only third-party script is YouTube's player, on video pages |
-| Audit | `activity_log` records publish, duplicate, archive, assign, enroll, role change, video completed, attempt start and submit, export |
+| Audit | `activity_log` records sign-in, publish, duplicate, archive, assign, enroll, role change, video completed, attempt start and submit, export |
 
 ---
 
@@ -516,6 +563,11 @@ Published courses are read-only. To change videos or questions, duplicate the co
 | YouTube video removed or made private | Player error shows "Video unavailable. Contact HR."; publish re-checks embeddability |
 | Course changed after enrollments | Not possible; published courses are locked |
 | Learner tries another learner's data | Impossible through the API; every query is scoped to the signed-in user |
+| Sign-in code expired or mistyped | Handled on the WorkOS page; the person requests a new code |
+| Email outside allowed domains | No session; "Use your company email" |
+| Sign-in code lands in junk | Tell staff in advance; IT can allowlist the WorkOS sender (a mail setting, no DNS) |
+| WorkOS is down | Nobody can sign in; people already signed in continue until their access token needs refreshing |
+| Session expires mid-assessment | Saved answers are kept; after signing in again the attempt resumes |
 
 ---
 
@@ -534,14 +586,15 @@ Published courses are read-only. To change videos or questions, duplicate the co
 ├── api/
 │   └── index.ts                  # Vercel entry: hands every /api/* request to the Hono app
 ├── server/                       # the Hono app; no Vercel-specific code
-│   ├── app.ts                    # mounts health, learner and admin routes
+│   ├── app.ts                    # mounts health, auth, learner and admin routes
+│   ├── auth/                     # signin, callback, signout, test-signin
 │   ├── learner/
 │   │   ├── index.ts              # signed-in check, then routes to a handler
 │   │   └── routes/               # courses, videos, attempts
 │   ├── admin/
 │   │   ├── index.ts              # admin check, then routes to a handler
 │   │   └── routes/               # courses, videos, questions, assign, users, reports
-│   └── lib/                      # db.ts, identity.ts, youtube.ts, csv.ts
+│   └── lib/                      # db.ts, identity.ts, workos.ts, youtube.ts, csv.ts
 ├── supabase/
 │   ├── migrations/               # schema, RLS, database functions (SQL)
 │   └── seed.sql                  # sample course and test users for local and preview
@@ -559,7 +612,7 @@ Everyone works across all modules; anyone can pick up any step.
 **Working agreements**
 
 1. Agree on the schema (section 6) and the endpoint list (section 7) before feature work. The frontend can build against mocked responses.
-2. Each session works on its own branch and reaches `main` through a pull request; every PR adds a row to `progress.md`. PRs are squash-merged. A PR that touches migrations, `server/lib/identity.ts` or the learner routes needs approval from one other teammate (enforced with CODEOWNERS); every other PR merges once its checks pass. Commit and progress rules are in `AGENTS.md`.
+2. Each session works on its own branch and reaches `main` through a pull request; every PR adds a row to `progress.md`. PRs are squash-merged. A PR that touches migrations, `server/lib/identity.ts`, `server/auth/` or the learner routes needs approval from one other teammate (enforced with CODEOWNERS); every other PR merges once its checks pass. Commit and progress rules are in `AGENTS.md`.
 3. Hosted changes (applying migrations to Supabase, production deploys) are made only from `main` after the PR is merged, never from a branch. Vercel previews of branches are fine, but they share the database, so a branch never applies its own migrations to it. Anyone on the team can deploy.
 4. One Supabase project for now (previews and production share it). Create a separate production project before the real rollout.
 
@@ -575,8 +628,8 @@ Everyone works across all modules; anyone can pick up any step.
 | 6 | Learner: dashboard, course list, enroll, video player with tracking | 4 |
 | 7 | Assessment: unlock, start, autosave, submit, score | 6 |
 | 8 | Admin: assign, tracking, reports, stats, export, users | 5, 7 |
-| 9 | Real sign-in (section 4.3) | Decision |
-| 10 | Pilot readiness: edge cases (section 11), RLS checklist, Vercel Pro, separate production database, pilot with one team | All |
+| 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page | WorkOS account, keys in Vercel, redirect URI set |
+| 10 | Pilot readiness: edge cases (section 11), RLS checklist, Vercel Pro, separate production database or `TEST_SIGNIN` off, WorkOS data location confirmed, sign-in email deliverability checked, pilot with one team | All |
 
 Steps 5 and 6–7 can run in parallel.
 
@@ -601,7 +654,7 @@ Steps 5 and 6–7 can run in parallel.
 | Capability | How it would work |
 |---|---|
 | Employee sync | The HRMS sends the employee list; V2 upserts `users` by `employee_code` (or email) in one shared function |
-| Sign-in | Company sign-in already maps people to `users`; the HRMS can link to course pages directly |
+| Sign-in | WorkOS sign-in already maps people to `users`; Microsoft sign-in can be added in WorkOS; the HRMS can link to course pages directly |
 | Results to HRMS | `submit_attempt` is the single point where a result is produced; V2 sends it from there, or the HRMS pulls it |
 | Automatic assignment | New joiners or departments are enrolled by rule instead of by hand |
 
