@@ -12,7 +12,7 @@ Instructions for any AI coding agent working in this repository. Read this whole
 
 ## 1. Project
 
-An internal assessment tool (V1). Admins create multiple-choice assessments, upload employees, and email each one a personal link. Employees take the assessment without logging in and see only their score and pass/fail.
+An internal learning platform (V1 pilot). Employees sign in, enroll in courses (or are assigned them), watch each course's videos to at least 80% in order, then take the course's assessment and see only their score. Admins build courses, assign them by email, and track progress and results.
 
 The repo keeps **two docs**, and both must stay accurate:
 
@@ -57,15 +57,16 @@ If the committing person's email is blank, ask for it once and add it to this ta
 1. **Never commit or push without asking first** (Rule 1 at the top of this file).
 2. **Never push to `main` directly.** Push your own branch; changes reach `main` only through a pull request (section 6).
 3. **RLS stays on every table, with no policies for public access.** The `anon` and `authenticated` roles get no table or function privileges.
-4. **The browser never queries tables directly.** All data goes through the `/api/admin` and `/api/employee` routes.
+4. **The browser never queries tables directly.** All data goes through the `/api` (learner) and `/api/admin` routes.
 5. **`DATABASE_URL` and other server secrets are only in Vercel server environment variables.** Never in frontend code, never with a `VITE_` prefix, never committed.
-6. **The `/api/employee` routes never return `options.is_correct`, `answers.is_correct` or `answers.points_awarded`.** Employees see only score and pass/fail.
-7. **Every `/api/employee` query is filtered by the assignment found from the link token.** It never accepts an employee id or assignment id from the browser.
-8. **Every admin request checks the admin password first.**
+6. **Learner routes never return `options.is_correct`, `answers.is_correct`, `answers.points_awarded`, `attempts.passed` or `courses.pass_percentage`.** Learners see only their score.
+7. **Every learner query is scoped to the user returned by `getCurrentUser()`** (`server/lib/identity.ts`). The API never accepts a user id from the browser for learner routes.
+8. **Every admin request checks that the signed-in user has `role = 'admin'` first.** Identity is worked out only in `server/lib/identity.ts`.
 9. **Every new database function gets** `revoke execute ... from public, anon, authenticated`. The API connects as the owner role, so no grant is needed.
 10. **Schema changes are new migration files.** Never edit a migration that has already been applied or committed.
-11. **Secrets never go in the repo or in the cloud session's environment variables.** Server secrets (`DATABASE_URL`, admin password, Resend key) live in Vercel environment variables without a `VITE_` prefix, set by a person. The frontend needs no environment variables. `.env*` files stay in `.gitignore`, except `.env.example`. The repo is public.
-12. **Published assessments are read-only.** Changes go through "duplicate as new draft".
+11. **Secrets never go in the repo or in the cloud session's environment variables.** Server secrets (`DATABASE_URL`, and sign-in secrets once chosen) live in Vercel environment variables without a `VITE_` prefix, set by a person. The frontend needs no environment variables. `.env*` files stay in `.gitignore`, except `.env.example`. The repo is public.
+12. **Published courses are read-only.** Changes go through "duplicate as new draft".
+13. **Test sign-in never works in production.** It needs `TEST_SIGNIN=on` and a non-production deployment, and it must be replaced by real sign-in before the pilot.
 
 ---
 
@@ -177,8 +178,8 @@ supabase db reset                    # re-apply all migrations locally (wipes LO
 ## 9. Conventions
 
 - **TypeScript strict mode.** Avoid `any`; if it's unavoidable, add a comment saying why.
-- **API:** a Hono app in `server/`. Validate every request body with Zod. Shared code (database client, auth, tokens, email, CSV) lives in `server/lib/`. Only `api/index.ts` may import Vercel-specific code.
-- **Database logic that must be atomic** (starting, submitting, auto-submitting attempts) lives in Postgres functions that the API calls with plain SQL.
-- **Frontend:** all server calls go through `web/src/api/adminApi.ts` and `web/src/api/employeeApi.ts`. The frontend never connects to Supabase or the database.
+- **API:** a Hono app in `server/`. Validate every request body with Zod. Shared code (database client, identity, YouTube checks, CSV) lives in `server/lib/`. Only `api/index.ts` may import Vercel-specific code.
+- **Database logic that must be atomic** (starting, submitting, auto-submitting attempts) lives in Postgres functions that the API calls with plain SQL. This includes recording video progress.
+- **Frontend:** all server calls go through `web/src/api/learnerApi.ts` and `web/src/api/adminApi.ts`. The frontend never connects to Supabase or the database.
 - **Folder structure** follows `architecture.md` section 10.
 - Keep changes small and focused. One logical change per commit.
