@@ -61,12 +61,13 @@ If the committing person's email is blank, ask for it once and add it to this ta
 5. **`DATABASE_URL` and other server secrets are only in Vercel server environment variables.** Never in frontend code, never with a `VITE_` prefix, never committed.
 6. **Learner routes never return `options.is_correct`, `answers.is_correct`, `answers.points_awarded`, `attempts.passed` or `courses.pass_percentage`.** Learners see only their score.
 7. **Every learner query is scoped to the user returned by `getCurrentUser()`** (`server/lib/identity.ts`). The API never accepts a user id from the browser for learner routes.
-8. **Every admin request checks that the signed-in user has `role = 'admin'` first.** Identity is worked out only in `server/lib/identity.ts`.
+8. **Every admin request checks that the signed-in user has `role = 'admin'` first.** Identity is worked out only in `server/lib/identity.ts`; sign-in uses WorkOS AuthKit (`architecture.md` section 4.3).
 9. **Every new database function gets** `revoke execute ... from public, anon, authenticated`. The API connects as the owner role, so no grant is needed.
 10. **Schema changes are new migration files.** Never edit a migration that has already been applied or committed.
-11. **Secrets never go in the repo or in the cloud session's environment variables.** Server secrets (`DATABASE_URL`, and sign-in secrets once chosen) live in Vercel environment variables without a `VITE_` prefix, set by a person. The frontend needs no environment variables. `.env*` files stay in `.gitignore`, except `.env.example`. The repo is public.
+11. **Secrets never go in the repo or in the cloud session's environment variables.** Server secrets (`DATABASE_URL`, `WORKOS_API_KEY`, `WORKOS_COOKIE_PASSWORD`) live in Vercel environment variables without a `VITE_` prefix, set by a person. The frontend needs no environment variables. `.env*` files stay in `.gitignore`, except `.env.example`. The repo is public.
 12. **Published courses are read-only.** Changes go through "duplicate as new draft".
-13. **Test sign-in never works in production.** It needs `TEST_SIGNIN=on` and a non-production deployment, and it must be replaced by real sign-in before the pilot.
+13. **Test sign-in never works in production.** It needs `TEST_SIGNIN=on` and a non-production deployment. Before the pilot, turn it off or give previews their own database.
+14. **Sign-in sessions stay server-side.** WorkOS tokens never reach the browser (only the encrypted HttpOnly cookie), only allowed company domains get a session, and every non-GET API request must pass the `Origin` check.
 
 ---
 
@@ -178,7 +179,7 @@ supabase db reset                    # re-apply all migrations locally (wipes LO
 ## 9. Conventions
 
 - **TypeScript strict mode.** Avoid `any`; if it's unavoidable, add a comment saying why.
-- **API:** a Hono app in `server/`. Validate every request body with Zod. Shared code (database client, identity, YouTube checks, CSV) lives in `server/lib/`. Only `api/index.ts` may import Vercel-specific code.
+- **API:** a Hono app in `server/`. Validate every request body with Zod. Shared code (database client, identity, WorkOS client, YouTube checks, CSV) lives in `server/lib/`. Sign-in routes live in `server/auth/`. Only `api/index.ts` may import Vercel-specific code.
 - **Database logic that must be atomic** (starting, submitting, auto-submitting attempts) lives in Postgres functions that the API calls with plain SQL. This includes recording video progress.
 - **Frontend:** all server calls go through `web/src/api/learnerApi.ts` and `web/src/api/adminApi.ts`. The frontend never connects to Supabase or the database.
 - **Folder structure** follows `architecture.md` section 10.
