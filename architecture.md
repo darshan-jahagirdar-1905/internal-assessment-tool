@@ -47,6 +47,19 @@ The first course is *Email Etiquette*, built from a YouTube video.
 | Hosting | Vercel (one project, one domain), function region `bom1` (Mumbai) | Same region as the database. Hobby is for non-commercial use, so move to Pro before rollout |
 | Migrations | Supabase CLI (`supabase/migrations/`) | Plain SQL files |
 
+### Dependencies (approved)
+
+| Package | Where | Purpose |
+|---|---|---|
+| `hono` | API | Routing and middleware |
+| `postgres` | API | Postgres driver |
+| `zod` | API | Request validation |
+| `@workos-inc/node` | API | WorkOS sign-in (added with the sign-in step) |
+| `@hono/node-server`, `tsx` | API, dev only | Run the API locally |
+| `react`, `react-dom`, `react-router-dom`, `vite`, `typescript`, `eslint` | Frontend | Already installed |
+
+Any other package needs approval first (`AGENTS.md` section 5).
+
 **Portability:** the Hono app in `server/` uses only web-standard `Request`/`Response` and plain SQL. Only `api/index.ts` knows about Vercel. Moving host means a new entry file and a new `DATABASE_URL`, not a rewrite.
 
 ### Environment variables
@@ -55,7 +68,7 @@ The first course is *Email Etiquette*, built from a YouTube video.
 |---|---|---|
 | `DATABASE_URL` | Vercel, server only, Sensitive | Supabase pooler connection string (transaction mode, port 6543). Full database access. **Never** in the frontend |
 | `APP_BASE_URL` | Vercel, server only | The site's public URL |
-| `ALLOWED_EMAIL_DOMAINS` | Vercel, server only | Comma-separated company domains allowed to sign in, e.g. `transfunnel.com` |
+| `ALLOWED_EMAIL_DOMAINS` | Vercel, server only, all environments | Company domains allowed to sign in (comma-separated). Set to `transfunnel.com` |
 | `WORKOS_API_KEY` | Vercel, server only, Sensitive | WorkOS secret key (`sk_…`) |
 | `WORKOS_CLIENT_ID` | Vercel, server only | WorkOS client id (`client_…`) |
 | `WORKOS_COOKIE_PASSWORD` | Vercel, server only, Sensitive | 32+ random characters; encrypts the session cookie |
@@ -110,7 +123,7 @@ Every API request (except `GET /api/health`) first calls `getCurrentUser()` in `
 So the team can build and test everything without WorkOS, and on preview deployments (whose addresses change, so they can't be registered with WorkOS):
 
 - **Enabled only when both are true:** `TEST_SIGNIN = on`, and the deployment is not production (`VERCEL_ENV` is `preview`, or the app is running locally). In production it is off whatever the variables say, and the app shows "Sign-in is not available yet".
-- On a preview deployment, the sign-in page offers "Test sign-in": enter an allowed email address. The browser then sends it as the `x-test-user` header, and `identity.ts` loads (or creates) that user.
+- On a preview deployment, the sign-in page offers "Test sign-in": enter an allowed email address. The browser keeps it in `sessionStorage` and sends it on every API call as the `x-test-user` header; `identity.ts` loads (or creates) that user. There is no test-sign-in route and no cookie.
 - Preview deployments are behind Vercel login (Standard Protection), so only the team can reach them.
 - **Known risk:** previews and production share one database, so test sign-in can act as any user on preview. That is acceptable only while there is no real data. **Before the pilot, either give previews their own database or turn `TEST_SIGNIN` off.**
 
@@ -400,7 +413,6 @@ One Hono app (`server/app.ts`), run on Vercel through a single entry file, `api/
 | `GET /auth/signin` | Redirect to the WorkOS sign-in page (section 4.3) |
 | `GET /auth/callback` | WorkOS returns here; exchange the code, check the domain, create the session cookie, redirect to `/` |
 | `POST /auth/signout` | Clear the session cookie and redirect to WorkOS's logout URL |
-| `POST /auth/test-signin` | Preview and local only (section 4.2) |
 
 ### 7.2 Learner (`/api`)
 
@@ -587,7 +599,7 @@ Published courses are read-only. To change videos or questions, duplicate the co
 │   └── index.ts                  # Vercel entry: hands every /api/* request to the Hono app
 ├── server/                       # the Hono app; no Vercel-specific code
 │   ├── app.ts                    # mounts health, auth, learner and admin routes
-│   ├── auth/                     # signin, callback, signout, test-signin
+│   ├── auth/                     # signin, callback, signout
 │   ├── learner/
 │   │   ├── index.ts              # signed-in check, then routes to a handler
 │   │   └── routes/               # courses, videos, attempts
@@ -597,7 +609,7 @@ Published courses are read-only. To change videos or questions, duplicate the co
 │   └── lib/                      # db.ts, identity.ts, workos.ts, youtube.ts, csv.ts
 ├── supabase/
 │   ├── migrations/               # schema, RLS, database functions (SQL)
-│   └── seed.sql                  # sample course and test users for local and preview
+│   └── seed.sql                  # sample course and test users; LOCAL database only (never run on Supabase)
 ├── package.json                  # API dependencies (web/ has its own)
 ├── vercel.json                   # build web/, route /api/* to api/index.ts, region bom1
 └── architecture.md
