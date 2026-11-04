@@ -1,0 +1,25 @@
+{
+  "name": "internal-assessment-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:api": "tsx watch --env-file-if-exists=.env server/dev.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "hono": "^4.7.10",
+    "postgres": "^3.4.5",
+    "zod": "^3.25.36"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.27.0",
+    "@hono/node-server": "^1.14.3",
+    "@types/node": "^22.15.21",
+    "eslint": "^9.27.0",
+    "globals": "^16.1.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.32.1"
+  }
+}

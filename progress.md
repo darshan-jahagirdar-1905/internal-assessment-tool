@@ -6,6 +6,7 @@ Every change to this repo gets one row here, newest first, in the same commit as
 
 | Date | Who | Area | What changed |
 |---|---|---|---|
+| 2026-11-04 | Darshan | setup | API scaffold: Hono API in server/ served by Vercel under /api with a health check, the sign-in check (test sign-in on previews and locally, refused in production) and a same-site check on changes; site and API deploy together in Mumbai; old link pages and Deno stubs removed. Next: clear Vercel Root Directory and add ALLOWED_EMAIL_DOMAINS and TEST_SIGNIN |
 | 2026-11-04 | Darshan | docs | Allowed sign-in domain set to transfunnel.com, approved packages listed, test sign-in described as header-only, and seed data marked local-only so it never reaches the hosted database |
 | 2026-11-03 | Darshan | docs | Sign-in decided: WorkOS AuthKit with 6-digit email codes (no DNS needed), company domains only, encrypted session cookie; sign-in routes, environment variables, WorkOS dashboard setup and security checks documented. Next: API scaffold |
 | 2026-11-02 | Darshan | docs | Design rewritten for the learning platform: sign-in with company accounts (method on hold, test sign-in on previews until then), course catalog and enrollment, YouTube videos watched to 80% in order, one assessment per course with score-only results, admin course builder and tracking. Next: API scaffold |
