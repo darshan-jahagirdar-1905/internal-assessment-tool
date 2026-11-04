@@ -152,7 +152,7 @@ Chosen because we can't add DNS records to `transfunnel.com`, so we can't send e
 **Rules**
 
 - The browser never sees WorkOS tokens; it only holds the encrypted, HttpOnly cookie.
-- Because the session is a cookie, every non-GET API request must carry an `Origin` header equal to `APP_BASE_URL`, or it is refused (protection against cross-site requests), on top of `SameSite=Lax`.
+- Because the session is a cookie, every non-GET API request must carry an `Origin` header whose host matches the host the request was sent to (the site's own domain), or it is refused (protection against cross-site requests), on top of `SameSite=Lax`.
 - Roles live in our `users` table, not in WorkOS.
 - WorkOS may create its own user record for someone outside the allowed domains before our callback refuses them. They get no access to our app; such records can be deleted in the WorkOS dashboard. If WorkOS offers a domain restriction setting, turn it on as well.
 - WorkOS stores names and emails, likely in the US. Confirm this is acceptable before the pilot (section 13, step 10).
@@ -398,13 +398,13 @@ One Hono app (`server/app.ts`), run on Vercel through a single entry file, `api/
 - Each group has a thin `index.ts` that runs its check once, then hands off to a handler in its `routes/` folder (one file per area). No handler runs before the check.
 - Every route validates its request body with Zod.
 - Learner routes **never** return `options.is_correct`, `answers.is_correct`, `answers.points_awarded`, `attempts.passed` or `courses.pass_percentage`.
-- The site and the API share one domain, so no CORS headers are sent. Every non-GET request must have `Origin` equal to `APP_BASE_URL`.
+- The site and the API share one domain, so no CORS headers are sent. Every non-GET request must have an `Origin` matching the site's own host (`server/lib/origin.ts`).
 
 ### 7.1 Public
 
 | Method & path | Purpose |
 |---|---|
-| `GET /api/health` | `{ ok, db }`: checks the database connection. No data |
+| `GET /api/health` | `{ ok, db, testSignin }`: checks the database connection (503 when it is down) and says whether test sign-in is on, so the sign-in page knows whether to offer it. No user data |
 
 ### 7.1a Sign-in (`/api/auth`)
 
@@ -606,11 +606,14 @@ Published courses are read-only. To change videos or questions, duplicate the co
 │   ├── admin/
 │   │   ├── index.ts              # admin check, then routes to a handler
 │   │   └── routes/               # courses, videos, questions, assign, users, reports
-│   └── lib/                      # db.ts, identity.ts, workos.ts, youtube.ts, csv.ts
+│   ├── dev.ts                    # local API server (Node), used by npm run dev:api
+│   └── lib/                      # config.ts, db.ts, email.ts, identity.ts, origin.ts, workos.ts, youtube.ts, csv.ts
 ├── supabase/
 │   ├── migrations/               # schema, RLS, database functions (SQL)
 │   └── seed.sql                  # sample course and test users; LOCAL database only (never run on Supabase)
-├── package.json                  # API dependencies (web/ has its own)
+├── package.json                  # API dependencies and scripts (web/ has its own)
+├── tsconfig.json, eslint.config.js  # API typecheck and lint
+├── .env.example                  # local API settings (copy to .env, git-ignored)
 ├── vercel.json                   # build web/, route /api/* to api/index.ts, region bom1
 └── architecture.md
 ```

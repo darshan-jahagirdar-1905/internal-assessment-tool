@@ -156,7 +156,11 @@ npm run build            # typecheck + production build
 npm run lint
 npm run typecheck        # tsc -b (plain `tsc --noEmit` checks nothing with this tsconfig layout)
 
-# API (repo root): commands are added by the API scaffold PR
+# API (run from the repo root)
+npm install
+npm run dev:api          # API on http://localhost:8787/api (reads .env; copy .env.example)
+npm run typecheck
+npm run lint
 
 # Database (Supabase CLI, run from the repo root; needs Docker for `start`)
 supabase start                       # local Postgres
@@ -171,8 +175,8 @@ supabase db reset                    # re-apply all migrations locally (wipes LO
 **Checks before committing**
 
 - Frontend change (in `web/`): `npm run typecheck`, `npm run lint`, `npm run build`
-- API change (`api/`, `server/`): typecheck and lint at the repo root (commands added by the API scaffold PR)
-- SQL change: `supabase db reset` succeeds, and the RLS checklist in `architecture.md` section 5.2 still passes
+- API change (`api/`, `server/`): `npm run typecheck` and `npm run lint` at the repo root
+- SQL change: `supabase db reset` succeeds, and the RLS checklist in `architecture.md` section 6.2 still passes
 
 ---
 
@@ -182,5 +186,5 @@ supabase db reset                    # re-apply all migrations locally (wipes LO
 - **API:** a Hono app in `server/`. Validate every request body with Zod. Shared code (database client, identity, WorkOS client, YouTube checks, CSV) lives in `server/lib/`. Sign-in routes live in `server/auth/`. Only `api/index.ts` may import Vercel-specific code.
 - **Database logic that must be atomic** (starting, submitting, auto-submitting attempts) lives in Postgres functions that the API calls with plain SQL. This includes recording video progress.
 - **Frontend:** all server calls go through `web/src/api/learnerApi.ts` and `web/src/api/adminApi.ts`. The frontend never connects to Supabase or the database.
-- **Folder structure** follows `architecture.md` section 10.
+- **Folder structure** follows `architecture.md` section 12.
 - Keep changes small and focused. One logical change per commit.

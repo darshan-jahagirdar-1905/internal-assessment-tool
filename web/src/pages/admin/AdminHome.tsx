@@ -1,9 +1,9 @@
-// Placeholder. Admin screens (password gate, assessments, editor, employees,
-// tracking, reports) are built here. See architecture.md sections 4 and 6.1.
+// Placeholder. Admin screens (courses, course editor, assign, tracking,
+// reports, users) are built from execution step C1. See architecture.md section 8.
 function AdminHome() {
   return (
     <main>
-      <h1>Assessment admin</h1>
+      <h1>Admin</h1>
       <p>Admin screens are not built yet.</p>
     </main>
   )

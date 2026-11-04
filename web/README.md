@@ -1,12 +1,10 @@
 # web
 
-React + Vite + TypeScript frontend for the internal assessment tool.
-Routes: `/admin/*` (admin screens) and `/t/:token` (employee take flow).
+React + Vite + TypeScript frontend for the learning platform: learner pages and `/admin/*`.
 
 ```bash
-cp .env.example .env.local   # fill in public values only
 npm install
-npm run dev
+npm run dev        # http://localhost:5173; /api is proxied to the local API on port 8787
 ```
 
-Design and rules: `../architecture.md`. Agent and commit rules: `../AGENTS.md`.
+The frontend needs no environment variables. Design and rules: `../architecture.md`. Agent and commit rules: `../AGENTS.md`.
