@@ -171,6 +171,8 @@ supabase db reset                    # re-apply all migrations locally (wipes LO
 
 **Cloud sessions:** the Supabase CLI isn't pre-installed, but it runs through npx: `npx -y supabase@2.48.3 ...`. `supabase start` / `db reset` still need Docker. If a check below needs a tool that isn't available, say which check you couldn't run instead of skipping it silently.
 
+**CI** (`.github/workflows/ci.yml`) runs on every push to `main`: API and web typecheck, lint and build; all migrations applied to a fresh Postgres 17, then `scripts/check-rls.sql`; and two repo rules (`progress.md` changed, no committed migration edited). A red CI run means production may be broken: fix it straight away. Run the RLS check locally with `psql -f scripts/check-rls.sql`.
+
 **Checks before committing**
 
 - Frontend change (in `web/`): `npm run typecheck`, `npm run lint`, `npm run build`

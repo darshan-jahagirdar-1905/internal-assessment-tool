@@ -1,0 +1,109 @@
+name: CI
+
+# Until V1, commits go straight to main (AGENTS.md), so CI checks every push
+# to main and reports failures after the fact. Pull requests are covered too
+# for when the team returns to them.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    name: Typecheck, lint, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - run: npm ci
+      - run: npm --prefix web ci
+      - name: API typecheck
+        run: npm run typecheck
+      - name: API lint
+        run: npm run lint
+      - name: Web typecheck
+        run: npm --prefix web run typecheck
+      - name: Web lint
+        run: npm --prefix web run lint
+      - name: Web build
+        run: npm --prefix web run build
+
+  database:
+    name: Migrations and RLS
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the Supabase roles the migrations expect
+        run: psql -v ON_ERROR_STOP=1 -f scripts/ci-supabase-roles.sql
+      - name: Apply migrations in order
+        run: |
+          shopt -s nullglob
+          files=(supabase/migrations/*.sql)
+          echo "Applying ${#files[@]} migration(s)"
+          for f in "${files[@]}"; do
+            echo "::group::$f"
+            psql -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
+      - name: RLS and privilege checks (architecture.md section 6.2)
+        run: psql -v ON_ERROR_STOP=1 -f scripts/check-rls.sql
+
+  rules:
+    name: Repo rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Work out the changed range
+        id: range
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "base=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${{ github.event.before }}^{commit}" 2>/dev/null; then
+            echo "base=$(git rev-parse HEAD~1)" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Every change updates progress.md (AGENTS.md section 7)
+        run: |
+          if ! git diff --name-only "${{ steps.range.outputs.base }}" HEAD | grep -qx 'progress.md'; then
+            echo "::error::progress.md was not updated. Add a row for this change."
+            exit 1
+          fi
+      - name: Committed migrations are never edited (AGENTS.md hard rule 10)
+        run: |
+          changed=$(git diff --name-status "${{ steps.range.outputs.base }}" HEAD -- supabase/migrations | grep -v '^A' || true)
+          if [ -n "$changed" ]; then
+            echo "::error::Existing migrations were changed or removed. Add a new migration instead:"
+            echo "$changed"
+            exit 1
+          fi

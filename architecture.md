@@ -608,6 +608,8 @@ Published courses are read-only. To change videos or questions, duplicate the co
 │   │   └── routes/               # courses, videos, questions, assign, users, reports
 │   ├── dev.ts                    # local API server (Node), used by npm run dev:api
 │   └── lib/                      # config.ts, db.ts, email.ts, identity.ts, origin.ts, workos.ts, youtube.ts, csv.ts
+├── .github/workflows/ci.yml      # CI on every push to main: typecheck, lint, build, migrations + RLS check, repo rules
+├── scripts/                      # check-rls.sql (section 6.2 checks), ci-supabase-roles.sql (CI only)
 ├── supabase/
 │   ├── migrations/               # schema, RLS, database functions (SQL)
 │   └── seed.sql                  # sample course and test users; LOCAL database only (never run on Supabase)
