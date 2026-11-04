@@ -6,6 +6,7 @@ Every change to this repo gets one row here, newest first, in the same commit as
 
 | Date | Who | Area | What changed |
 |---|---|---|---|
+| 2026-11-04 | Darshan | setup | Phase A (Foundations) done: site and API live on production with the database connected, test sign-in off in production, CI on every push, and main protected against force pushes and deletion. Follow-ups: invite Vidit; unused Vercel variables kept by decision. Next: Phase B, the database schema |
 | 2026-11-04 | Darshan | setup | CI now runs on every push to main: typecheck, lint and build for the API and site, migrations applied to a fresh Postgres with the RLS check, and checks that progress.md is updated and no committed migration is edited |
 | 2026-11-04 | Darshan | docs | Until V1, commits go straight to main with no pull requests; every push deploys production, so checks run first, production is checked after each push, and sensitive changes get a teammate look on request |
 | 2026-11-04 | Darshan | setup | API scaffold: Hono API in server/ served by Vercel under /api with a health check, the sign-in check (test sign-in on previews and locally, refused in production) and a same-site check on changes; site and API deploy together in Mumbai; old link pages and Deno stubs removed. Next: clear Vercel Root Directory and add ALLOWED_EMAIL_DOMAINS and TEST_SIGNIN |

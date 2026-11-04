@@ -120,7 +120,7 @@ Every API request (except `GET /api/health`) first calls `getCurrentUser()` in `
 
 ### 4.2 Test sign-in (previews and local only)
 
-So the team can build and test everything without WorkOS, and on preview deployments (whose addresses change, so they can't be registered with WorkOS):
+So the team can build and test everything without WorkOS. Until V1, commits go straight to `main`, so there are no preview deployments and test sign-in is used **locally**; it also works on preview deployments if branches are used again (their addresses change, so they can't be registered with WorkOS):
 
 - **Enabled only when both are true:** `TEST_SIGNIN = on`, and the deployment is not production (`VERCEL_ENV` is `preview`, or the app is running locally). In production it is off whatever the variables say, and the app shows "Sign-in is not available yet".
 - On a preview deployment, the sign-in page offers "Test sign-in": enter an allowed email address. The browser keeps it in `sessionStorage` and sends it on every API call as the `x-test-user` header; `identity.ts` loads (or creates) that user. There is no test-sign-in route and no cookie.
@@ -649,6 +649,8 @@ Everyone works across all modules; anyone can pick up any step.
 | 10 | Pilot readiness: edge cases (section 11), RLS checklist, Vercel Pro, separate production database or `TEST_SIGNIN` off, WorkOS data location confirmed, sign-in email deliverability checked, pilot with one team | All |
 
 Steps 5 and 6–7 can run in parallel.
+
+**Status (4 Nov 2026):** steps 1–3 are done (Phase A, "Foundations", in the execution plan doc): the API runs on production with a working database connection, and CI runs on every push. Open follow-ups: invite Vidit to the repo; `ADMIN_PASSWORD`, `SUPABASE_SECRET`, `PUBLISHABLE_KEY` and `PROJECT_URL` stay in Vercel by decision (unused by the code). Next: step 4.
 
 ---
 
