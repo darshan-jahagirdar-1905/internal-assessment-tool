@@ -116,7 +116,7 @@ Every API request (except `GET /api/health`) first calls `getCurrentUser()` in `
 
 - Only addresses in `ALLOWED_EMAIL_DOMAINS` can sign in or be assigned.
 - A person assigned by email before they ever sign in gets a `users` row straight away. Their enrollment is waiting for them when they first sign in.
-- The first admin is set by a person with one SQL statement after the first migration (`update users set role = 'admin' where email = …`). After that, admins promote others from the admin screens.
+- The first admin (`darshanj@transfunnel.com`) is created by migration `20261104130000_first_admin.sql`; real sign-in attaches to that row by email. After that, admins promote others from the admin screens.
 
 ### 4.2 Test sign-in (previews and local only)
 
@@ -655,7 +655,9 @@ Everyone works across all modules; anyone can pick up any step.
 
 Steps 5 and 6–7 can run in parallel.
 
-**Status (4 Nov 2026):** steps 1–3 are done (Phase A, "Foundations", in the execution plan doc): the API runs on production with a working database connection, and CI runs on every push. Open follow-ups: invite Vidit to the repo; `ADMIN_PASSWORD`, `SUPABASE_SECRET`, `PUBLISHABLE_KEY` and `PROJECT_URL` stay in Vercel by decision (unused by the code). Next: step 4.
+**Status (4 Nov 2026):** steps 1–3 are done (Phase A, "Foundations", in the execution plan doc): the API runs on production with a working database connection, and CI runs on every push. Open follow-ups: invite Vidit to the repo; `ADMIN_PASSWORD`, `SUPABASE_SECRET`, `PUBLISHABLE_KEY` and `PROJECT_URL` stay in Vercel by decision (unused by the code).
+
+**Status (4 Nov 2026):** step 4 is done (Phase B, "Database"): the schema, RLS and database functions are live on Supabase and match the committed migration exactly; CI runs the function tests on every push; the first admin exists. Known, deliberate: the Supabase Advisor reports "RLS enabled, no policy" (the design), and four foreign keys have no index yet (fine at pilot size; indexes come with the admin reports). Next: steps 5 and 6 (Phase C).
 
 ---
 

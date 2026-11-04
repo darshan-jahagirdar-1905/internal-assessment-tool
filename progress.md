@@ -6,6 +6,7 @@ Every change to this repo gets one row here, newest first, in the same commit as
 
 | Date | Who | Area | What changed |
 |---|---|---|---|
+| 2026-11-04 | Darshan | db | Phase B (Database) done: schema, RLS and functions live on Supabase and matching the repo, function tests in CI, and Darshan set up as the first admin. Next: Phase C, the features |
 | 2026-11-04 | Darshan | db | Database schema written: 10 tables with RLS on and no public access, plus the functions that record video progress (80% rule, in order, capped at 2x speed), start and submit the assessment (scoring, one attempt) and auto-submit after the due date; tested in CI; sample data for local use. Next: apply it to Supabase |
 | 2026-11-04 | Darshan | setup | Phase A (Foundations) done: site and API live on production with the database connected, test sign-in off in production, CI on every push, and main protected against force pushes and deletion. Follow-ups: invite Vidit; unused Vercel variables kept by decision. Next: Phase B, the database schema |
 | 2026-11-04 | Darshan | setup | CI now runs on every push to main: typecheck, lint and build for the API and site, migrations applied to a fresh Postgres with the RLS check, and checks that progress.md is updated and no committed migration is edited |
