@@ -202,12 +202,12 @@ activity_log (references users / courses / enrollments by id)
 ### 6.1 Schema
 
 ```sql
-create extension if not exists pgcrypto;
+-- gen_random_uuid() is built into Postgres 13+, so no extension is needed.
 
 -- People. Ours, not the sign-in provider's (section 4.1).
 create table users (
   id                  uuid primary key default gen_random_uuid(),
-  email               text not null unique,          -- trimmed + lower-case
+  email               text not null unique check (email = lower(btrim(email))),
   full_name           text,
   role                text not null default 'learner'
                       check (role in ('learner', 'admin')),
@@ -276,6 +276,7 @@ create table enrollments (
   created_at       timestamptz not null default now(),
   unique (course_id, user_id)
 );
+create index enrollments_user_id_idx on enrollments (user_id);
 
 -- Watch progress per person per video (section 9.1).
 create table video_progress (
@@ -329,7 +330,10 @@ create table activity_log (
   details        jsonb,
   created_at     timestamptz not null default now()
 );
+create index activity_log_course_idx on activity_log (course_id, created_at);
 ```
+
+The migration that creates all of this is `supabase/migrations/20261104120000_initial_schema.sql`; the functions in section 9 are in the same file.
 
 Values shown in the UI that are not stored:
 
@@ -477,7 +481,7 @@ All server calls go through `web/src/api/learnerApi.ts` and `web/src/api/adminAp
 - **Browser:** while the video is playing and the tab is visible, the page records which segments the playhead passes through. It reports them every ~15 s, on pause, on end, and when the page is hidden or closed (`fetch` with `keepalive`).
 - **Server (`record_video_progress` function, one transaction):**
   1. Rejects the report if the video is locked (an earlier video is not complete) or the course is past its due date.
-  2. Credits only **new** segments, and at most as many as could have been played since the last report at 2× speed, plus one. A script cannot post "everything watched" in one call.
+  2. Credits only **new** segments, and at most as many as could have been played since the last report at 2× speed, plus one. A script cannot post "everything watched" in one call. The first report for a video credits at most one segment, so the player sends a report as soon as playback starts.
   3. Saves the resume position and the report time.
   4. Sets `completed_at` once `watched_segments * 100 >= 80 * total_segments`. Once complete, it stays complete.
   5. When the last video completes, sets the enrollment to `videos_done` and logs `video.completed` events.
@@ -612,6 +616,7 @@ Published courses are read-only. To change videos or questions, duplicate the co
 ├── scripts/                      # check-rls.sql (section 6.2 checks), ci-supabase-roles.sql (CI only)
 ├── supabase/
 │   ├── migrations/               # schema, RLS, database functions (SQL)
+│   ├── tests/                    # SQL tests for the database functions (run by CI)
 │   └── seed.sql                  # sample course and test users; LOCAL database only (never run on Supabase)
 ├── package.json                  # API dependencies and scripts (web/ has its own)
 ├── tsconfig.json, eslint.config.js  # API typecheck and lint

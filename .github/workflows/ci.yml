@@ -75,6 +75,14 @@ jobs:
           done
       - name: RLS and privilege checks (architecture.md section 6.2)
         run: psql -v ON_ERROR_STOP=1 -f scripts/check-rls.sql
+      - name: Database function tests (architecture.md section 9)
+        run: |
+          shopt -s nullglob
+          for f in supabase/tests/*.sql; do
+            echo "::group::$f"
+            psql -v ON_ERROR_STOP=1 -f "$f"
+            echo "::endgroup::"
+          done
 
   rules:
     name: Repo rules
