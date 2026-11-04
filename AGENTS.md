@@ -19,7 +19,7 @@ The repo keeps **two docs**, and both must stay accurate:
 | Doc | What it holds | When it changes |
 |---|---|---|
 | `architecture.md` | The design: scope, stack, database, RLS, endpoints, rules | Only when the design changes, and only after the person agrees (section 5) |
-| `progress.md` | A log of every change: who did what, and when | In **every** PR (section 7) |
+| `progress.md` | A log of every change: who did what, and when | In **every** commit (section 7) |
 
 `architecture.md` is the source of truth. If a task conflicts with it or goes beyond it, stop and ask.
 
@@ -46,7 +46,7 @@ If the committing person's email is blank, ask for it once and add it to this ta
 ## 3. Before starting any task
 
 1. Run `git status`. If there are uncommitted changes you didn't make, leave them alone and mention them. Never discard, stash or overwrite someone else's work.
-2. Make sure your branch starts from the latest `main`: run `git fetch origin main`, and if `main` has moved, bring it in: `git rebase origin/main` if your branch has never been pushed, otherwise `git merge origin/main`. If this fails because of uncommitted changes, tell the person instead of forcing it.
+2. Make sure you start from the latest `main`: run `git fetch origin main`, and if `main` has moved, bring it in with `git pull --rebase origin main` (only your unpushed commits are replayed). If this fails because of uncommitted changes, tell the person instead of forcing it.
 3. Read the latest entries in `progress.md`, so you know what changed recently.
 4. Read the sections of `architecture.md` that relate to the task.
 
@@ -55,7 +55,7 @@ If the committing person's email is blank, ask for it once and add it to this ta
 ## 4. Hard rules (never break these)
 
 1. **Never commit or push without asking first** (Rule 1 at the top of this file).
-2. **Never push to `main` directly.** Push your own branch; changes reach `main` only through a pull request (section 6).
+2. **Until V1 ships, commits are pushed straight to `main`, and only when the committing person says "commit and push"** (section 6). Every push to `main` deploys to production, so the checks must pass first. Never force push. After V1, the team goes back to branches and pull requests.
 3. **RLS stays on every table, with no policies for public access.** The `anon` and `authenticated` roles get no table or function privileges.
 4. **The browser never queries tables directly.** All data goes through the `/api` (learner) and `/api/admin` routes.
 5. **`DATABASE_URL` and other server secrets are only in Vercel server environment variables.** Never in frontend code, never with a `VITE_` prefix, never committed.
@@ -77,17 +77,17 @@ If the committing person's email is blank, ask for it once and add it to this ta
 - Adding or removing a dependency.
 - Deleting or renaming files outside the task.
 - Reading or changing `.env` files or secrets.
-- Anything that changes the **hosted** Supabase project or Vercel, whether through the Supabase or Vercel connector or the CLI: applying migrations, running SQL that changes data, deploying functions, changing secrets or environment variables, deploying the site. Read-only checks (listing tables, reading logs) don't need asking. A migration is applied only after its file is in the repo. Hosted migrations and production deploys are done only from an up-to-date `main` after the PR is merged, never from a branch. Anyone on the team can deploy.
+- Anything that changes the **hosted** Supabase project or Vercel, whether through the Supabase or Vercel connector or the CLI: applying migrations, running SQL that changes data, deploying functions, changing secrets or environment variables, deploying the site. Read-only checks (listing tables, reading logs) don't need asking. A migration is applied only after its file is in the repo. Hosted migrations are applied only from an up-to-date `main`, after the commit that adds them is pushed. Anyone on the team can deploy.
 - Any git command that rewrites or discards history: `reset --hard`, `checkout -- <file>`, `rebase` of pushed commits, `commit --amend` on a pushed commit. **Never force push.**
 
 ---
 
 ## 6. Committing (every commit)
 
-Each cloud session works on its own branch. Commit to that branch, push it, and the change reaches `main` through a pull request. PRs are **squash-merged**, so each PR becomes one commit on `main` whose message is the PR title. Follow these steps every time.
+**Until V1, everyone works directly on `main`:** commit locally, then push to `main`. There are no pull requests. Every push to `main` deploys to production straight away, so a broken push breaks the live site. Follow these steps every time.
 
 1. **Check.** Run the checks that exist for what you changed (section 8). Don't commit if they fail; tell the person instead.
-2. **Update `progress.md`.** Each PR gets one row (section 7). Add it in the branch's first commit; later commits on the same branch update that row instead of adding another.
+2. **Update `progress.md`.** Each commit gets one row (section 7), in the same commit.
 3. **Stage only this task's files, by name.** Never use `git add .`, `git add -A` or `git commit -a`.
 4. **Write the message from `git diff --staged`.** Describe only what the diff actually shows. If the diff contains unrelated changes, suggest splitting them into separate commits.
 5. **STOP AND ASK (Rule 1, never skip).** Show the person the file list and the commit message, then ask both of these together and **wait for the answer**:
@@ -98,11 +98,11 @@ Each cloud session works on its own branch. Commit to that branch, push it, and 
    git commit --author="<Name> <<email from section 2>>" -m "<summary>" [-m "<body>"]
    ```
    Don't change `git config`. The `--author` flag credits the right person on a shared setup.
-7. **Push (if asked).** Push the session's branch with `git push -u origin HEAD`. Never push to `main`.
-8. **Remind them to create a PR.** After every push, end your reply with: **"Pushed to `<branch>`. Create a PR into `main` (Create PR in the diff view) and merge it."**
-    - If the PR has conflicts with `main`, merge `origin/main` into the branch (`git merge origin/main`) when asked. Never rebase a pushed branch: that needs a force push. The squash merge keeps `main` clean anyway.
-    - If `progress.md` conflicts, keep **both** entries, newest first.
+7. **Push (if asked).** First `git pull --rebase origin main`; if anything came in, run the checks again. Then `git push origin HEAD:main`. If the push is rejected because `main` moved, pull with rebase again, re-check, and push. **Never force push.**
+    - If `progress.md` conflicts during the rebase, keep **both** rows, newest first.
     - If code conflicts, stop and show the conflicting files. Don't resolve someone else's code without asking.
+8. **Check production.** Wait for the Vercel deployment of the pushed commit, then confirm it is Ready and `GET /api/health` returns `ok: true`. If it failed, say so and fix it straight away (a new commit, or Vercel's instant rollback with the person's OK). End your reply with: **"Pushed to `main` (`<short sha>`); production deploy: <Ready / failed>."**
+9. **Sensitive changes:** before pushing changes to `supabase/migrations/`, `server/lib/identity.ts`, `server/auth/` or the learner routes, ask whether a teammate should look at the diff first.
 
 ### Commit message format
 
@@ -116,7 +116,6 @@ Each cloud session works on its own branch. Commit to that branch, push it, and 
 - **summary:** imperative, lower-case, no full stop, 72 characters or fewer. Say what changed in plain words.
 - **body:** only if the reason isn't obvious from the summary.
 - **No** `Co-Authored-By` lines, no "Generated with" lines, no session links, no emoji, no names. The author field already says who did it.
-- **PR titles** use the same `<type>: <summary>` format, because the squash commit on `main` takes the PR title.
 
 | Good | Bad |
 |---|---|
@@ -129,7 +128,7 @@ Each cloud session works on its own branch. Commit to that branch, push it, and 
 
 ## 7. progress.md
 
-Add one row for **every** PR, however small, at the **top** of the log table (newest first). If the branch already has its row, update that row instead of adding a second one.
+Add one row for **every** commit, however small, at the **top** of the log table (newest first).
 
 ```
 | Date | Who | Area | What changed |

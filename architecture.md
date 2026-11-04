@@ -627,8 +627,8 @@ Everyone works across all modules; anyone can pick up any step.
 **Working agreements**
 
 1. Agree on the schema (section 6) and the endpoint list (section 7) before feature work. The frontend can build against mocked responses.
-2. Each session works on its own branch and reaches `main` through a pull request; every PR adds a row to `progress.md`. PRs are squash-merged. A PR that touches migrations, `server/lib/identity.ts`, `server/auth/` or the learner routes needs approval from one other teammate (enforced with CODEOWNERS); every other PR merges once its checks pass. Commit and progress rules are in `AGENTS.md`.
-3. Hosted changes (applying migrations to Supabase, production deploys) are made only from `main` after the PR is merged, never from a branch. Vercel previews of branches are fine, but they share the database, so a branch never applies its own migrations to it. Anyone on the team can deploy.
+2. **Until V1, commits go straight to `main`** (no pull requests), each after its checks pass and with a row in `progress.md`. Every push deploys to production. Changes to migrations, `server/lib/identity.ts`, `server/auth/` or the learner routes: ask whether a teammate should look at the diff before pushing. After V1, the team returns to branches and pull requests with CODEOWNERS review. Commit and progress rules are in `AGENTS.md`.
+3. Hosted migrations are applied only from an up-to-date `main`, after the commit that adds them is pushed. Anyone on the team can apply them, after asking.
 4. One Supabase project for now (previews and production share it). Create a separate production project before the real rollout.
 
 **Execution plan**
@@ -637,7 +637,7 @@ Everyone works across all modules; anyone can pick up any step.
 |---|---|---|
 | 1 | This design | — |
 | 2 | API scaffold: Hono app, Vercel entry, `vercel.json` (region `bom1`), `GET /api/health`, `getCurrentUser()` with test sign-in, Deno stubs removed. Then Vercel's Root Directory is cleared | 1 |
-| 3 | CI: typecheck, lint, build; migrations against a test Postgres; RLS checks; `progress.md` check. Then branch protection on `main` | 2 |
+| 3 | CI: typecheck, lint, build; migrations against a test Postgres; RLS checks; `progress.md` check, run on every push to `main`. Until V1, branch protection only blocks force pushes and deleting `main` | 2 |
 | 4 | Schema, RLS and database functions; seed data | 1 |
 | 5 | Admin course builder: details, videos, questions, publish, duplicate | 4 |
 | 6 | Learner: dashboard, course list, enroll, video player with tracking | 4 |

@@ -6,6 +6,7 @@ Every change to this repo gets one row here, newest first, in the same commit as
 
 | Date | Who | Area | What changed |
 |---|---|---|---|
+| 2026-11-04 | Darshan | docs | Until V1, commits go straight to main with no pull requests; every push deploys production, so checks run first, production is checked after each push, and sensitive changes get a teammate look on request |
 | 2026-11-04 | Darshan | setup | API scaffold: Hono API in server/ served by Vercel under /api with a health check, the sign-in check (test sign-in on previews and locally, refused in production) and a same-site check on changes; site and API deploy together in Mumbai; old link pages and Deno stubs removed. Next: clear Vercel Root Directory and add ALLOWED_EMAIL_DOMAINS and TEST_SIGNIN |
 | 2026-11-04 | Darshan | docs | Allowed sign-in domain set to transfunnel.com, approved packages listed, test sign-in described as header-only, and seed data marked local-only so it never reaches the hosted database |
 | 2026-11-03 | Darshan | docs | Sign-in decided: WorkOS AuthKit with 6-digit email codes (no DNS needed), company domains only, encrypted session cookie; sign-in routes, environment variables, WorkOS dashboard setup and security checks documented. Next: API scaffold |
