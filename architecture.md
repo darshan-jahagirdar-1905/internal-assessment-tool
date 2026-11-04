@@ -44,7 +44,7 @@ The first course is *Email Etiquette*, built from a YouTube video.
 | Database driver | `postgres` (postgres.js) over Supabase's connection pooler | Plain SQL; works with any Postgres host |
 | Sign-in | WorkOS AuthKit, Magic Auth only (`@workos-inc/node` in the API) | WorkOS hosts the sign-in page and emails the codes from its own domain, so no DNS is needed. Free up to 1M monthly users. Behind one "who is this?" step in the API |
 | Video | YouTube embedded player (IFrame Player API, `youtube-nocookie.com`) | Watch progress is read from the player |
-| Hosting | Vercel (one project, one domain), function region `bom1` (Mumbai) | Same region as the database. Hobby is for non-commercial use, so move to Pro before rollout |
+| Hosting | Vercel (one project, one domain), function region `bom1` (Mumbai) | Same region as the database. Staying on Hobby for now (decision, 4 Nov 2026); Vercel's terms limit Hobby to non-commercial use, a known risk to revisit before wider rollout |
 | Migrations | Supabase CLI (`supabase/migrations/`) | Plain SQL files |
 
 ### Dependencies (approved)
@@ -125,7 +125,7 @@ So the team can build and test everything without WorkOS. Until V1, commits go s
 - **Enabled only when both are true:** `TEST_SIGNIN = on`, and the deployment is not production (`VERCEL_ENV` is `preview`, or the app is running locally). In production it is off whatever the variables say, and the app shows "Sign-in is not available yet".
 - On a preview deployment, the sign-in page offers "Test sign-in": enter an allowed email address. The browser keeps it in `sessionStorage` and sends it on every API call as the `x-test-user` header; `identity.ts` loads (or creates) that user. There is no test-sign-in route and no cookie.
 - Preview deployments are behind Vercel login (Standard Protection), so only the team can reach them.
-- **Known risk:** previews and production share one database, so test sign-in can act as any user on preview. That is acceptable only while there is no real data. **Before the pilot, either give previews their own database or turn `TEST_SIGNIN` off.**
+- **Known risk:** previews and production share one database, so test sign-in can act as any user on preview. That is acceptable only while there is no real data. **Decision: one Supabase project.** Before the pilot, the test data is cleared and `TEST_SIGNIN` is turned off everywhere; the same project then becomes the live database.
 
 ### 4.3 Real sign-in: WorkOS AuthKit
 
@@ -175,7 +175,7 @@ Chosen because we can't add DNS records to `transfunnel.com`, so we can't send e
 |---|---|---|---|---|
 | 1 | Admin creates a draft course: title, description, pass %, optional due date | Admin › Course editor | `POST /admin/courses`, `PUT /admin/courses/:id` | `courses` |
 | 2 | Admin adds YouTube videos in order; each is checked as embeddable and its length is read | Admin › Course editor › Videos | `POST /admin/videos/check`, `PUT /admin/courses/:id/videos` | `videos` |
-| 3 | Admin adds questions and options, then publishes (the course becomes read-only) | Admin › Course editor › Assessment | `PUT /admin/courses/:id/questions`, `POST /admin/courses/:id/publish` | `questions`, `options` |
+| 3 | Admin adds questions and options, then publishes (the course becomes read-only, except its pass mark) | Admin › Course editor › Assessment | `PUT /admin/courses/:id/questions`, `POST /admin/courses/:id/publish` | `questions`, `options` |
 | 4 | Admin assigns the course to people by email | Admin › Course › Assign | `POST /admin/courses/:id/assign` | `users`, `enrollments` |
 | 5 | Employee signs in and sees the dashboard: enrolled courses and the course list | Dashboard | `GET /me`, `GET /courses` | `users`, `courses`, `enrollments` |
 | 6 | Employee enrolls in a published course | Course page | `POST /courses/:id/enroll` | `enrollments` |
@@ -222,7 +222,7 @@ create table courses (
   id               uuid primary key default gen_random_uuid(),
   title            text not null,
   description      text,
-  pass_percentage  int  not null check (pass_percentage between 1 and 100),  -- admin-only
+  pass_percentage  int  not null check (pass_percentage between 1 and 100),  -- admin-only; editable after publishing (9.3)
   max_attempts     int  not null default 1 check (max_attempts >= 1),       -- 1 for the pilot
   due_at           timestamptz,                       -- optional; none for the pilot
   status           text not null default 'draft'
@@ -302,7 +302,7 @@ create table attempts (
   score_points   int,
   max_points     int,
   score_pct      numeric(5,2),
-  passed         boolean,                              -- admin-only
+  passed         boolean,                              -- admin-only; dropped in execution step 5, pass/fail is computed (9.3)
   unique (enrollment_id, attempt_no)
 );
 
@@ -442,6 +442,7 @@ Every route checks that the course, video or attempt belongs to an enrollment of
 | `POST /courses` | Create a draft |
 | `GET /courses/:id` | Course with videos, questions and options (including correct answers) |
 | `PUT /courses/:id` | Update title, description, pass %, due date (draft only) |
+| `PUT /courses/:id/pass-mark` | Change the pass mark of a published course; pass/fail updates for everyone straight away; logged as `course.pass_mark_changed` |
 | `POST /videos/check` | Body: `{ url }`. Returns the YouTube id and title, and whether the video can be embedded |
 | `PUT /courses/:id/videos` | Replace the ordered video list, with each video's duration (draft only) |
 | `PUT /courses/:id/questions` | Replace all questions and options (draft only) |
@@ -510,7 +511,7 @@ Starting and submitting are Postgres functions that the API calls with plain SQL
 2. If already `submitted`, return the stored score (double-clicks and second tabs are harmless).
 3. Upsert the final answers.
 4. Score every question (9.3) and write `is_correct` and `points_awarded`.
-5. Write `score_points`, `max_points`, `score_pct`, `passed`, `submitted_at`, `status = 'submitted'`.
+5. Write `score_points`, `max_points`, `score_pct`, `submitted_at`, `status = 'submitted'`.
 6. Update the enrollment: `best_score_pct`, `status = 'completed'`, `completed_at`.
 7. Insert an `activity_log` row.
 
@@ -520,7 +521,7 @@ Starting and submitting are Postgres functions that the API calls with plain SQL
 - **Multiple-choice:** correct only if the selected set exactly equals the set of correct options (all-or-nothing).
 - **Unanswered:** 0 points. The UI warns "*N* questions unanswered — submit anyway?"
 - `score_pct = round(score_points * 100.0 / max_points, 2)`
-- `passed = (score_points * 100 >= pass_percentage * max_points)` (integers, so boundaries are exact). Stored for admins only.
+- **Pass/fail is not stored.** Admin views compute it when they read results: `score_points * 100 >= pass_percentage * max_points`, using the course's **current** pass mark (integers, so boundaries are exact). The default pass mark is 70%. Admins can change it at any time, even after publishing; scores never change, only who counts as passed. Learners never see pass/fail.
 - With retakes turned on later, the enrollment's result is its **best** attempt.
 
 ### 9.4 What learners see
@@ -537,7 +538,7 @@ One row per enrollment: name, email, employee code, source, enrolled at, videos 
 
 ### 9.7 Editing after publishing
 
-Published courses are read-only. To change videos or questions, duplicate the course, edit the copy, publish it and assign it. Archive the old one. This keeps every stored score explainable.
+Published courses are read-only, except the pass mark (9.3). To change videos or questions, duplicate the course, edit the copy, publish it and assign it. Archive the old one. This keeps every stored score explainable.
 
 ---
 
@@ -550,7 +551,7 @@ Published courses are read-only. To change videos or questions, duplicate the co
 | Secrets | `DATABASE_URL`, `WORKOS_API_KEY` and `WORKOS_COOKIE_PASSWORD` only in Vercel server variables; the frontend has none; the repo is public |
 | Sign-in | WorkOS Magic Auth codes; company domains only; encrypted HttpOnly `SameSite=Lax` session cookie; `state` checked on callback; `Origin` checked on every non-GET request |
 | Identity | One `getCurrentUser()` step on every request; learners only ever see their own data; admin routes need `role = 'admin'` |
-| Test sign-in | Preview and local only; never in production; turned off (or previews given their own database) before the pilot |
+| Test sign-in | Local (and preview) only; never in production; turned off everywhere, and test data cleared, before the pilot |
 | Answer key | Never returned to learners; scoring runs in the database |
 | Results | Learners see their score only |
 | Watch tracking | Server-side limit on credit per report; video order enforced on the server |
@@ -636,7 +637,7 @@ Everyone works across all modules; anyone can pick up any step.
 1. Agree on the schema (section 6) and the endpoint list (section 7) before feature work. The frontend can build against mocked responses.
 2. **Until V1, commits go straight to `main`** (no pull requests), each after its checks pass and with a row in `progress.md`. Every push deploys to production. Changes to migrations, `server/lib/identity.ts`, `server/auth/` or the learner routes: ask whether a teammate should look at the diff before pushing. After V1, the team returns to branches and pull requests with CODEOWNERS review. Commit and progress rules are in `AGENTS.md`.
 3. Hosted migrations are applied only from an up-to-date `main`, after the commit that adds them is pushed. Anyone on the team can apply them, after asking.
-4. One Supabase project for now (previews and production share it). Create a separate production project before the real rollout.
+4. **One Supabase project** (decision, 4 Nov 2026). It holds test data while we build; before the pilot the test data is cleared, test sign-in is turned off, and it becomes the live database.
 
 **Execution plan**
 
@@ -646,14 +647,16 @@ Everyone works across all modules; anyone can pick up any step.
 | 2 | API scaffold: Hono app, Vercel entry, `vercel.json` (region `bom1`), `GET /api/health`, `getCurrentUser()` with test sign-in, Deno stubs removed. Then Vercel's Root Directory is cleared | 1 |
 | 3 | CI: typecheck, lint, build; migrations against a test Postgres; RLS checks; `progress.md` check, run on every push to `main`. Until V1, branch protection only blocks force pushes and deleting `main` | 2 |
 | 4 | Schema, RLS and database functions; seed data | 1 |
-| 5 | Admin course builder: details, videos, questions, publish, duplicate | 4 |
+| 5 | Admin course builder: details, videos, questions, publish, duplicate, archive, pass mark changeable after publishing (with a migration that drops `attempts.passed`) | 4 |
 | 6 | Learner: dashboard, course list, enroll, video player with tracking | 4 |
 | 7 | Assessment: unlock, start, autosave, submit, score | 6 |
 | 8 | Admin: assign, tracking, reports, stats, export, users | 5, 7 |
-| 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page | WorkOS account, keys in Vercel, redirect URI set |
-| 10 | Pilot readiness: edge cases (section 11), RLS checklist, Vercel Pro, separate production database or `TEST_SIGNIN` off, WorkOS data location confirmed, sign-in email deliverability checked, pilot with one team | All |
+| 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page. Built and tested with the Staging keys now in Vercel | WorkOS account (done), redirect URI set |
+| 10 | Course content: Claude drafts 30 single-choice questions from the *Email Etiquette* transcript, each with the timestamp it comes from; the team approves; an admin enters it in the builder (70% pass mark) | 5; video link and transcript |
+| 11 | Test round: 4–5 people run the whole journey on production | 5–10 |
+| 12 | Go-live: clear test data, turn `TEST_SIGNIN` off, switch WorkOS to Production keys, accept WorkOS's DPA and add a line to an internal notice, RLS checklist and edge cases (section 11), then the pilot with 60–80 people | 11 |
 
-Steps 5 and 6–7 can run in parallel.
+Claude builds steps 5–9 one after another (decision, 4 Nov 2026). Timeline: as soon as possible; no fixed dates.
 
 **Status (4 Nov 2026):** steps 1–3 are done (Phase A, "Foundations", in the execution plan doc): the API runs on production with a working database connection, and CI runs on every push. Open follow-ups: invite Vidit to the repo; `ADMIN_PASSWORD`, `SUPABASE_SECRET`, `PUBLISHABLE_KEY` and `PROJECT_URL` stay in Vercel by decision (unused by the code).
 

@@ -65,8 +65,8 @@ If the committing person's email is blank, ask for it once and add it to this ta
 9. **Every new database function gets** `revoke execute ... from public, anon, authenticated`. The API connects as the owner role, so no grant is needed.
 10. **Schema changes are new migration files.** Never edit a migration that has already been applied or committed.
 11. **Secrets never go in the repo or in the cloud session's environment variables.** Server secrets (`DATABASE_URL`, `WORKOS_API_KEY`, `WORKOS_COOKIE_PASSWORD`) live in Vercel environment variables without a `VITE_` prefix, set by a person. The frontend needs no environment variables. `.env*` files stay in `.gitignore`, except `.env.example`. The repo is public.
-12. **Published courses are read-only.** Changes go through "duplicate as new draft".
-13. **Test sign-in never works in production.** It needs `TEST_SIGNIN=on` and a non-production deployment. Before the pilot, turn it off or give previews their own database.
+12. **Published courses are read-only, except the pass mark.** Other changes go through "duplicate as new draft". Pass/fail is computed from the score and the course's current pass mark, never stored.
+13. **Test sign-in never works in production.** It needs `TEST_SIGNIN=on` and a non-production deployment. Before the pilot, the test data is cleared and test sign-in is turned off everywhere (one Supabase project).
 14. **Sign-in sessions stay server-side.** WorkOS tokens never reach the browser (only the encrypted HttpOnly cookie), only allowed company domains get a session, and every non-GET API request must pass the `Origin` check.
 
 ---
@@ -166,6 +166,8 @@ supabase start                       # local Postgres
 supabase migration new <name>        # new migration file
 supabase db reset                    # re-apply all migrations locally (wipes LOCAL data only)
 ```
+
+**Migrations on Supabase are applied through the Supabase connector**, which records its own version numbers (not the file timestamps). Don't run `supabase db push` against the hosted project: the CLI wouldn't recognise the applied migrations and would try to run them again.
 
 **Hosted Supabase and Vercel:** use the Supabase and Vercel connectors. Ask before any change (section 5). Resend and other integrations are written in code, not used through connectors. Supabase is used only as the database. Vercel's project root is the repo root: it builds `web/` and serves the API from `api/`.
 
