@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { setTestUser } from '../api/client.ts'
+import { getTestUser, setTestUser } from '../api/client.ts'
 import { SessionProvider } from '../lib/session.tsx'
 import { useSession } from '../lib/sessionContext.ts'
 import { Icon, type IconName } from './Icon.tsx'
@@ -39,9 +39,18 @@ function Shell() {
   const displayName = me.full_name ?? me.email
 
   function signOut() {
-    // Test sign-in only. Real sign-out (WorkOS) is added in step C6.
-    setTestUser(null)
-    navigate('/signin')
+    if (getTestUser()) {
+      setTestUser(null)
+      navigate('/signin')
+      return
+    }
+    // Real sign-in: a form POST, so the API can clear the session cookie and
+    // send the browser on to WorkOS's sign-out page.
+    const form = document.createElement('form')
+    form.method = 'post'
+    form.action = '/api/auth/signout'
+    document.body.appendChild(form)
+    form.submit()
   }
 
   return (

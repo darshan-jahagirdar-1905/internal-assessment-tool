@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { admin } from './admin/index.js'
+import { auth } from './auth/routes.js'
 import { learner } from './learner/index.js'
 import { testSigninEnabled } from './lib/config.js'
 import { databaseIsUp } from './lib/db.js'
@@ -14,6 +15,8 @@ app.get('/health', async (c) => {
   const db = await databaseIsUp()
   return c.json({ ok: db, db, testSignin: testSigninEnabled() }, db ? 200 : 503)
 })
+
+app.route('/', auth)
 
 // Order matters: admin before learner, because the learner group is mounted
 // at the root and its sign-in check would otherwise catch /admin paths.

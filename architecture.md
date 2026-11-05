@@ -144,11 +144,13 @@ Chosen because we can't add DNS records to `transfunnel.com`, so we can't send e
 
 1. `GET /api/auth/signin` creates a random `state`, stores it in a short-lived HttpOnly cookie, and redirects to the WorkOS authorization URL (provider `authkit`, redirect `{APP_BASE_URL}/api/auth/callback`).
 2. `GET /api/auth/callback` checks `state` against the cookie, then calls `authenticateWithCode` with sealing on. WorkOS returns the user (id, email, name, email verified) and an encrypted ("sealed") session.
-3. **Domain check:** the email's domain must be in `ALLOWED_EMAIL_DOMAINS`, and the email must be verified. Otherwise no session is created and the person sees "Use your company email".
+3. **Domain check:** the email's domain must be in `ALLOWED_EMAIL_DOMAINS`, and the email must be verified. Otherwise no session is created, `user.signin_refused` is logged (domain only), the person's WorkOS session is ended (so they can try another email) and they land on the sign-in page with "Use your company email address to sign in".
 4. The API upserts the `users` row (match `auth_subject`, else email), sets `auth_subject` and `first_signed_in_at`, and logs `user.signed_in`.
 5. It sets the session cookie `wos-session`: HttpOnly, Secure, `SameSite=Lax`, `Path=/`, and redirects to `/`.
-6. On every request, `getCurrentUser()` opens the sealed session with `WORKOS_COOKIE_PASSWORD`. If the access token has expired it refreshes it with WorkOS and re-sets the cookie; if the refresh fails, the user is signed out. It then loads the `users` row by `auth_subject`.
-7. `POST /api/auth/signout` clears the cookie and redirects to WorkOS's logout URL, which ends the WorkOS session too.
+6. On every request, `getCurrentUser()` opens the sealed session with `WORKOS_COOKIE_PASSWORD`. If the access token has expired it refreshes it with WorkOS and re-sets the cookie; if the refresh fails, that request is treated as signed out (the cookie is left alone, because two requests can race to refresh and the other may have succeeded; the browser retries a failed GET once). A tampered or unreadable cookie counts as signed out. It then loads the `users` row by `auth_subject`.
+7. `POST /api/auth/signout` (a form post from the site) clears the cookie and redirects to WorkOS's logout URL, which ends the WorkOS session too and returns to `/signin`.
+
+The session cookie lasts up to 30 days in the browser; the WorkOS session length (dashboard) still decides when a refresh stops working. Package: `@workos-inc/node` 11.x.
 
 **Rules**
 
@@ -161,7 +163,7 @@ Chosen because we can't add DNS records to `transfunnel.com`, so we can't send e
 **WorkOS dashboard setup (done by a person)**
 
 - Authentication methods: **Magic Auth on**; passwords and social sign-in off.
-- Redirect URI: `https://internal-assessment-tool.vercel.app/api/auth/callback` (production environment). For local testing of real sign-in, add `http://localhost:5173/api/auth/callback` in the WorkOS staging environment and use its keys locally.
+- Redirect URI: `https://internal-assessment-tool.vercel.app/api/auth/callback`. Until go-live the app uses the **Staging** keys, so set it (and the sign-out redirect below) in the WorkOS **Staging** environment now, and again in Production at go-live. For local testing of real sign-in, add `http://localhost:5173/api/auth/callback` in the WorkOS staging environment and use its keys locally.
 - Sign-out redirect: `https://internal-assessment-tool.vercel.app/signin`.
 - Branding: company name and logo on the hosted page.
 - Session length: set in the WorkOS dashboard; a person who leaves can't receive new codes once their mailbox is closed, and their session ends at that limit.
@@ -657,7 +659,7 @@ Everyone works across all modules; anyone can pick up any step.
 | 6 | Learner: dashboard, course list, enroll, video player with tracking. **Done 5 Nov 2026 (C2: dashboard, catalog, enroll, course page; C3: video player with tracking)** | 4 |
 | 7 | Assessment: unlock, start, autosave, submit, score. **Done 5 Nov 2026 (C4)** | 6 |
 | 8 | Admin: assign, tracking, reports, stats, export, users; indexes for the four unindexed foreign keys. **Done 5 Nov 2026 (C5)** | 5, 7 |
-| 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page. Built and tested with the Staging keys now in Vercel | WorkOS account (done), redirect URI set |
+| 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page. Built and tested with the Staging keys now in Vercel. **Code done 5 Nov 2026 (C6); end-to-end check on production waits for the WorkOS dashboard settings** | WorkOS account (done), redirect URI set |
 | 10 | Course content: Claude drafts 30 single-choice questions from the *Email Etiquette* transcript, each with the timestamp it comes from; the team approves; an admin enters it in the builder (70% pass mark) | 5; video link and transcript |
 | 11 | Test round: 4–5 people run the whole journey on production | 5–10 |
 | 12 | Go-live: clear test data, turn `TEST_SIGNIN` off, switch WorkOS to Production keys, accept WorkOS's DPA and add a line to an internal notice, RLS checklist and edge cases (section 11), then the pilot with 60–80 people | 11 |
@@ -668,7 +670,7 @@ Claude builds steps 5–9 one after another (decision, 4 Nov 2026). Timeline: as
 
 **Status (4 Nov 2026):** step 4 is done (Phase B, "Database"): the schema, RLS and database functions are live on Supabase and match the committed migration exactly; CI runs the function tests on every push; the first admin exists. Known, deliberate: the Supabase Advisor reports "RLS enabled, no policy" (the design), and four foreign keys have no index yet (fine at pilot size; indexes come with the admin reports). Next: steps 5 and 6 (Phase C).
 
-**Status (5 Nov 2026):** steps 5–8 are done and on production (C1–C5 in the execution plan doc): the course builder, the learner dashboard, catalog and course page, the video player with watch tracking, the assessment, and admin assign, results, reports, export and users. Migration `20261105120000_foreign_key_indexes.sql` adds the four missing foreign-key indexes. Nobody can sign in on production until step 9 (WorkOS), so features are tried with test sign-in. Next: step 9 (C6).
+**Status (5 Nov 2026):** steps 5–8 are done and on production (C1–C5 in the execution plan doc): the course builder, the learner dashboard, catalog and course page, the video player with watch tracking, the assessment, and admin assign, results, reports, export and users. Migration `20261105120000_foreign_key_indexes.sql` adds the four missing foreign-key indexes. Step 9 (WorkOS sign-in, C6) is built and tested locally against a stand-in for WorkOS; signing in on production needs the WorkOS dashboard settings in section 4.3 (Staging environment). Next: those settings and the C6 production check, then Phase D.
 
 ---
 

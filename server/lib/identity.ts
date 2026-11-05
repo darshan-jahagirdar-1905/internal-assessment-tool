@@ -1,7 +1,9 @@
 import type { Context, MiddlewareHandler } from 'hono'
+import { getCookie } from 'hono/cookie'
 import { testSigninEnabled } from './config.js'
 import { sql } from './db.js'
 import { normaliseAllowedEmail } from './email.js'
+import { cookiePassword, SESSION_COOKIE, setSessionCookie, workos, workosConfigured } from './workos.js'
 
 // The one "who is this?" step (architecture.md section 4.1). No other code
 // knows how sign-in works.
@@ -23,8 +25,38 @@ export async function getCurrentUser(c: Context): Promise<User | null> {
       return email ? upsertTestUser(email) : null
     }
   }
-  // WorkOS sign-in (section 4.3) is added in execution step C6.
-  return null
+  return sessionUser(c)
+}
+
+// The WorkOS session cookie (section 4.3 step 6). An expired access token is
+// refreshed and the cookie re-set. A failed refresh doesn't clear the cookie:
+// two requests can race to refresh, and the other one may have succeeded.
+async function sessionUser(c: Context): Promise<User | null> {
+  const sealed = getCookie(c, SESSION_COOKIE)
+  if (!sealed || !workosConfigured()) return null
+  const subject = await sessionSubject(c, sealed)
+  if (!subject) return null
+  const [user] = await sql()<User[]>`
+    select id, email, full_name, role from users where auth_subject = ${subject}`
+  return user ?? null
+}
+
+// The WorkOS user id in a valid session, or null. A tampered or unreadable
+// cookie counts as signed out, not as a server error.
+async function sessionSubject(c: Context, sealed: string): Promise<string | null> {
+  try {
+    const session = workos().userManagement.loadSealedSession({ sessionData: sealed, cookiePassword: cookiePassword() })
+    const current = await session.authenticate()
+    if (current.authenticated) return current.user.id
+    if (current.reason !== 'invalid_jwt') return null
+    const refreshed = await session.refresh()
+    if (!refreshed.authenticated) return null
+    if (refreshed.sealedSession) setSessionCookie(c, refreshed.sealedSession)
+    return refreshed.user.id
+  } catch (err) {
+    console.error('Session check failed:', err instanceof Error ? err.message : err)
+    return null
+  }
 }
 
 async function upsertTestUser(email: string): Promise<User> {

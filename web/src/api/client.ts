@@ -37,7 +37,12 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const testUser = getTestUser()
   if (testUser) headers.set('x-test-user', testUser)
 
-  const res = await fetch(`/api${path}`, { ...init, headers, credentials: 'same-origin' })
+  let res = await fetch(`/api${path}`, { ...init, headers, credentials: 'same-origin' })
+  // Two requests can race to refresh an expired sign-in session; the loser gets
+  // 401 while the winner's new cookie is already set. One retry covers it.
+  if (res.status === 401 && !testUser && (init.method ?? 'GET') === 'GET') {
+    res = await fetch(`/api${path}`, { ...init, headers, credentials: 'same-origin' })
+  }
   const body: unknown = await res.json().catch(() => null)
   if (!res.ok) {
     const err = body as { error?: string; details?: unknown } | null
