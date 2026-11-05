@@ -3,6 +3,7 @@ import { AdminOnly, AppShell } from './components/AppShell.tsx'
 import AdminHome from './pages/admin/AdminHome.tsx'
 import CourseEditor from './pages/admin/CourseEditor.tsx'
 import Catalog from './pages/learner/Catalog.tsx'
+import CoursePage from './pages/learner/CoursePage.tsx'
 import Dashboard from './pages/learner/Dashboard.tsx'
 import SignIn from './pages/learner/SignIn.tsx'
 import NotFound from './pages/NotFound.tsx'
@@ -14,6 +15,7 @@ function App() {
       <Route element={<AppShell />}>
         <Route index element={<Dashboard />} />
         <Route path="/courses" element={<Catalog />} />
+        <Route path="/courses/:id" element={<CoursePage />} />
         <Route path="/admin" element={<AdminOnly><AdminHome /></AdminOnly>} />
         <Route path="/admin/courses/:id" element={<AdminOnly><CourseEditor /></AdminOnly>} />
       </Route>

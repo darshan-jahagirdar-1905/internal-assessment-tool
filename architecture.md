@@ -423,9 +423,9 @@ One Hono app (`server/app.ts`), run on Vercel through a single entry file, `api/
 | Method & path | Purpose |
 |---|---|
 | `GET /me` | The signed-in user: name, email, role |
-| `GET /courses` | Published courses, each with my enrollment state (not enrolled / in progress / completed) and my score if completed |
-| `POST /courses/:id/enroll` | Enroll myself in a published course. Idempotent |
-| `GET /courses/:id` | For an enrolled course: videos in order with my progress, lock state and resume position; assessment state (locked / available / in progress / completed) and my score |
+| `GET /courses` | Published courses, plus courses I'm enrolled in that were later archived (I keep my results), each with my enrollment state, videos completed, overall watch progress and my score if completed. First submits any of my open attempts that are past their due date |
+| `POST /courses/:id/enroll` | Enroll myself in a published course that isn't past its due date. Idempotent. An unpublished course I'm not in answers 404 |
+| `GET /courses/:id` | A published course (or one I'm enrolled in): videos in order with my progress, lock state and resume position; assessment state (not enrolled / locked / available / in progress / completed / closed) and my score. Anything else answers 404 |
 | `POST /videos/:id/progress` | Body: `{ segments: int[], position: int }`. Records watched segments (section 9.1). Returns my progress for that video |
 | `POST /courses/:id/attempt` | Start the assessment, or return the open attempt. Refused unless every video is complete and attempts remain |
 | `GET /attempts/:id` | Questions and options (**no correct answers**) and my saved answers |
@@ -649,7 +649,7 @@ Everyone works across all modules; anyone can pick up any step.
 | 3 | CI: typecheck, lint, build; migrations against a test Postgres; RLS checks; `progress.md` check, run on every push to `main`. Until V1, branch protection only blocks force pushes and deleting `main` | 2 |
 | 4 | Schema, RLS and database functions; seed data | 1 |
 | 5 | Admin course builder: details, videos, questions, publish, duplicate, archive, pass mark changeable after publishing (with a migration that drops `attempts.passed`). **Done 5 Nov 2026 (C1)** | 4 |
-| 6 | Learner: dashboard, course list, enroll, video player with tracking | 4 |
+| 6 | Learner: dashboard, course list, enroll, video player with tracking. **Dashboard, catalog, enroll and course page done 5 Nov 2026 (C2); the player is C3** | 4 |
 | 7 | Assessment: unlock, start, autosave, submit, score | 6 |
 | 8 | Admin: assign, tracking, reports, stats, export, users | 5, 7 |
 | 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page. Built and tested with the Staging keys now in Vercel | WorkOS account (done), redirect URI set |

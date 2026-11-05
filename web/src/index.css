@@ -468,3 +468,56 @@ textarea.input { min-height: 80px; resize: vertical; }
 .option-row .input { flex: 1; }
 .correct-mark { color: var(--ok); font-weight: 600; }
 .unsaved { color: #b8730b; font-weight: 600; font-size: 0.9rem; }
+
+/* ---------- Learner course screens ---------- */
+
+.course-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+  background: var(--surface);
+}
+
+.course-card:hover { border-color: var(--brand); }
+
+.course-card-title { margin: 0; font-size: 1.05rem; font-weight: 600; }
+.course-card-meta { margin: 0; color: var(--text-muted); font-size: 0.92rem; }
+.course-card-desc { margin: var(--space-2) 0; }
+
+.course-tile { display: flex; flex-direction: column; gap: var(--space-2); }
+.course-tile-actions { margin-top: auto; padding-top: var(--space-3); }
+
+.progress {
+  height: 8px;
+  border-radius: 999px;
+  background: #e3e8ee;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent-blue);
+  border-radius: 999px;
+}
+
+.video-list { list-style: none; margin: 0; padding: 0; }
+
+.video-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.video-row:last-child { border-bottom: 0; }
+.video-row.is-locked { opacity: 0.6; }
+.video-status { display: grid; place-items: center; width: 32px; color: var(--brand-ink); }
+.video-title { font-weight: 600; }
+.lock { font-size: 1rem; }
+
+.score { display: flex; align-items: baseline; gap: var(--space-3); }
