@@ -8,7 +8,7 @@ import { dueText } from './courseFormat.ts'
 import { ProgressBar } from './courseUi.tsx'
 
 // Course page: videos in order with progress and locks, and the assessment
-// card (execution step C2). The video player is step C3, the assessment C4.
+// card (execution step C2). Videos open in VideoPage; the assessment is C4.
 function CoursePage() {
   const { id = '' } = useParams()
   const [course, setCourse] = useState<Course | null>(null)
@@ -70,9 +70,9 @@ function CoursePage() {
                 {!v.locked && !v.completed && v.watched_pct > 0 && <ProgressBar value={v.watched_pct} label={`${v.title} watched`} />}
               </div>
               <span>
-                {v.completed ? <Badge tone="ok">Watched</Badge>
+                {v.completed ? <span className="row-actions"><Badge tone="ok">Watched</Badge><Link className="button button-secondary button-small" to={`/courses/${course.id}/videos/${v.id}`}>Watch again</Link></span>
                   : v.locked ? <span className="muted">{course.enrollment ? 'Watch the previous video first' : 'Locked'}</span>
-                  : <span className="muted">Player coming in the next update</span>}
+                  : <Link className="button button-secondary button-small" to={`/courses/${course.id}/videos/${v.id}`}>{v.watched_pct > 0 ? 'Continue' : 'Watch'}</Link>}
               </span>
             </li>
           ))}

@@ -56,3 +56,22 @@ export const getMe = () => apiRequest<Me>('/me')
 export const listMyCourses = () => apiRequest<{ courses: CourseListItem[] }>('/courses')
 export const getCoursePage = (id: string) => apiRequest<CoursePage>(`/courses/${id}`)
 export const enroll = (id: string) => apiRequest<CoursePage>(`/courses/${id}/enroll`, { method: 'POST' })
+
+export type VideoProgress = {
+  watched_segments: number
+  total_segments: number
+  completed: boolean
+  last_position_seconds: number
+  watched_pct: number
+}
+
+// keepalive lets the last report finish when the page is being closed.
+export const reportProgress = (videoId: string, segments: number[], position: number, keepalive = false) =>
+  apiRequest<VideoProgress>(`/videos/${videoId}/progress`, {
+    method: 'POST',
+    body: JSON.stringify({ segments, position }),
+    keepalive,
+  })
+
+export const reportVideoError = (videoId: string, code: number) =>
+  apiRequest<{ ok: true }>(`/videos/${videoId}/error`, { method: 'POST', body: JSON.stringify({ code }) })

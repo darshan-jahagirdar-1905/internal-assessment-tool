@@ -1,11 +1,32 @@
-// Reads a video's length from the YouTube player in the admin's browser
-// (architecture.md section 9.1). Resolves null if YouTube can't be reached
-// (e.g. a blocked network); the admin then types the length.
+// YouTube IFrame Player helpers (architecture.md section 9.1): reading a
+// video's length in the course editor, and the learner's video player.
+// Everything resolves to null if YouTube can't be reached (e.g. a blocked
+// network), so callers can fall back.
 
-type YTPlayer = { getDuration(): number; destroy(): void }
-type YTNamespace = {
-  Player: new (el: HTMLElement, opts: { videoId: string; host: string; events: { onReady(): void; onError(): void } }) => YTPlayer
+export const PLAYER_STATE = { ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3 } as const
+
+export type YTPlayer = {
+  getDuration(): number
+  getCurrentTime(): number
+  getPlayerState(): number
+  destroy(): void
 }
+
+type PlayerOptions = {
+  videoId: string
+  host: string
+  width?: string | number
+  height?: string | number
+  playerVars?: Record<string, string | number>
+  events: {
+    onReady?(): void
+    onStateChange?(event: { data: number }): void
+    onError?(event: { data: number }): void
+  }
+}
+
+export type YTNamespace = { Player: new (el: HTMLElement, opts: PlayerOptions) => YTPlayer }
+
 declare global {
   interface Window {
     YT?: YTNamespace
@@ -15,7 +36,7 @@ declare global {
 
 let apiPromise: Promise<YTNamespace | null> | null = null
 
-function loadApi(): Promise<YTNamespace | null> {
+export function loadYouTubeApi(): Promise<YTNamespace | null> {
   if (window.YT?.Player) return Promise.resolve(window.YT)
   apiPromise ??= new Promise((resolve) => {
     const timer = window.setTimeout(() => resolve(null), 10000)
@@ -35,7 +56,7 @@ function loadApi(): Promise<YTNamespace | null> {
 }
 
 export async function readDuration(youtubeId: string): Promise<number | null> {
-  const YT = await loadApi()
+  const YT = await loadYouTubeApi()
   if (!YT) return null
   return new Promise((resolve) => {
     const host = document.createElement('div')
