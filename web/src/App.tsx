@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom'
 import { AdminOnly, AppShell } from './components/AppShell.tsx'
 import AdminHome from './pages/admin/AdminHome.tsx'
+import AssessmentPage from './pages/learner/AssessmentPage.tsx'
 import CourseEditor from './pages/admin/CourseEditor.tsx'
 import Catalog from './pages/learner/Catalog.tsx'
 import CoursePage from './pages/learner/CoursePage.tsx'
@@ -18,6 +19,7 @@ function App() {
         <Route path="/courses" element={<Catalog />} />
         <Route path="/courses/:id" element={<CoursePage />} />
         <Route path="/courses/:id/videos/:videoId" element={<VideoPage />} />
+        <Route path="/courses/:id/assessment" element={<AssessmentPage />} />
         <Route path="/admin" element={<AdminOnly><AdminHome /></AdminOnly>} />
         <Route path="/admin/courses/:id" element={<AdminOnly><CourseEditor /></AdminOnly>} />
       </Route>

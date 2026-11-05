@@ -8,7 +8,8 @@ import { dueText } from './courseFormat.ts'
 import { ProgressBar } from './courseUi.tsx'
 
 // Course page: videos in order with progress and locks, and the assessment
-// card (execution step C2). Videos open in VideoPage; the assessment is C4.
+// card (execution step C2). Videos open in VideoPage, the assessment in
+// AssessmentPage.
 function CoursePage() {
   const { id = '' } = useParams()
   const [course, setCourse] = useState<Course | null>(null)
@@ -84,7 +85,10 @@ function CoursePage() {
         {a.state === 'not_enrolled' && <p className="muted">Enroll and watch the videos to unlock the assessment.</p>}
         {a.state === 'locked' && <p className="muted">Unlocks when you've watched every video (at least 80% of each).</p>}
         {(a.state === 'available' || a.state === 'in_progress') && (
-          <p className="muted">{a.state === 'available' ? 'Ready when you are.' : 'You have an assessment in progress.'} The assessment screen is coming in the next update.</p>
+          <div className="row-actions">
+            <Link className="button button-primary" to={`/courses/${course.id}/assessment`}>{a.state === 'available' ? 'Go to the assessment' : 'Continue the assessment'}</Link>
+            <span className="muted">{a.state === 'available' ? 'Ready when you are.' : 'Your answers so far are saved.'}</span>
+          </div>
         )}
         {a.state === 'completed' && a.score_pct !== null && (
           <div className="score"><span className="stat-value">{a.score_pct}%</span><span className="muted">Your score</span></div>

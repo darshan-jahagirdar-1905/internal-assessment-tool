@@ -75,3 +75,35 @@ export const reportProgress = (videoId: string, segments: number[], position: nu
 
 export const reportVideoError = (videoId: string, code: number) =>
   apiRequest<{ ok: true }>(`/videos/${videoId}/error`, { method: 'POST', body: JSON.stringify({ code }) })
+
+// The assessment. Questions come without correct answers; after submitting,
+// only the score comes back.
+export type AttemptQuestion = {
+  id: string
+  position: number
+  text: string
+  type: 'single' | 'multiple'
+  options: { id: string; text: string }[]
+}
+
+export type Attempt =
+  | { id: string; course_id: string; course_title: string; due_at: string | null; status: 'submitted'; score_pct: number }
+  | {
+      id: string
+      course_id: string
+      course_title: string
+      due_at: string | null
+      status: 'in_progress'
+      questions: AttemptQuestion[]
+      answers: { question_id: string; selected_option_ids: string[] }[]
+    }
+
+export type AnswerInput = { question_id: string; selected_option_ids: string[] }
+
+export const startAttempt = (courseId: string) =>
+  apiRequest<{ attempt_id: string }>(`/courses/${courseId}/attempt`, { method: 'POST' })
+export const getAttempt = (id: string) => apiRequest<Attempt>(`/attempts/${id}`)
+export const saveAnswer = (id: string, answer: AnswerInput) =>
+  apiRequest<{ ok: true }>(`/attempts/${id}/answers`, { method: 'PUT', body: JSON.stringify(answer) })
+export const submitAttempt = (id: string, answers: AnswerInput[]) =>
+  apiRequest<{ score_pct: number }>(`/attempts/${id}/submit`, { method: 'POST', body: JSON.stringify({ answers }) })

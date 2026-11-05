@@ -430,7 +430,7 @@ One Hono app (`server/app.ts`), run on Vercel through a single entry file, `api/
 | `POST /videos/:id/error` | Body: `{ code: int }`. The player couldn't play this video; logs `video.unavailable` with the YouTube error code (section 9.1) |
 | `POST /courses/:id/attempt` | Start the assessment, or return the open attempt. Refused unless every video is complete and attempts remain |
 | `GET /attempts/:id` | Questions and options (**no correct answers**) and my saved answers |
-| `PUT /attempts/:id/answers` | Body: `{ question_id, selected_option_ids[] }`. Upserts one answer |
+| `PUT /attempts/:id/answers` | Body: `{ question_id, selected_option_ids[] }`. Upserts one answer. Refused once the attempt is submitted or past the due date, if an option isn't from that question, or if a single-choice question gets more than one option |
 | `POST /attempts/:id/submit` | Body: all answers (final snapshot). Scores and returns `{ score_pct }` only |
 
 Every route checks that the course, video or attempt belongs to an enrollment of the signed-in user.
@@ -651,7 +651,7 @@ Everyone works across all modules; anyone can pick up any step.
 | 4 | Schema, RLS and database functions; seed data | 1 |
 | 5 | Admin course builder: details, videos, questions, publish, duplicate, archive, pass mark changeable after publishing (with a migration that drops `attempts.passed`). **Done 5 Nov 2026 (C1)** | 4 |
 | 6 | Learner: dashboard, course list, enroll, video player with tracking. **Done 5 Nov 2026 (C2: dashboard, catalog, enroll, course page; C3: video player with tracking)** | 4 |
-| 7 | Assessment: unlock, start, autosave, submit, score | 6 |
+| 7 | Assessment: unlock, start, autosave, submit, score. **Done 5 Nov 2026 (C4)** | 6 |
 | 8 | Admin: assign, tracking, reports, stats, export, users | 5, 7 |
 | 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page. Built and tested with the Staging keys now in Vercel | WorkOS account (done), redirect URI set |
 | 10 | Course content: Claude drafts 30 single-choice questions from the *Email Etiquette* transcript, each with the timestamp it comes from; the team approves; an admin enters it in the builder (70% pass mark) | 5; video link and transcript |
@@ -663,6 +663,8 @@ Claude builds steps 5–9 one after another (decision, 4 Nov 2026). Timeline: as
 **Status (4 Nov 2026):** steps 1–3 are done (Phase A, "Foundations", in the execution plan doc): the API runs on production with a working database connection, and CI runs on every push. Open follow-ups: invite Vidit to the repo; `ADMIN_PASSWORD`, `SUPABASE_SECRET`, `PUBLISHABLE_KEY` and `PROJECT_URL` stay in Vercel by decision (unused by the code).
 
 **Status (4 Nov 2026):** step 4 is done (Phase B, "Database"): the schema, RLS and database functions are live on Supabase and match the committed migration exactly; CI runs the function tests on every push; the first admin exists. Known, deliberate: the Supabase Advisor reports "RLS enabled, no policy" (the design), and four foreign keys have no index yet (fine at pilot size; indexes come with the admin reports). Next: steps 5 and 6 (Phase C).
+
+**Status (5 Nov 2026):** steps 5–7 are done and on production (C1–C4 in the execution plan doc): the course builder, the learner dashboard, catalog and course page, the video player with watch tracking, and the assessment. Nobody can sign in on production until step 9 (WorkOS), so features are tried with test sign-in. Next: step 8 (C5, admin tracking and reports), then step 9 (C6).
 
 ---
 

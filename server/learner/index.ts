@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { requireUser, type AppEnv } from '../lib/identity.js'
+import { attempts } from './routes/attempts.js'
 import { courses } from './routes/courses.js'
 import { me } from './routes/me.js'
 import { videos } from './routes/videos.js'
@@ -10,3 +11,4 @@ learner.use('*', requireUser)
 learner.route('/', me)
 learner.route('/', courses)
 learner.route('/', videos)
+learner.route('/', attempts)

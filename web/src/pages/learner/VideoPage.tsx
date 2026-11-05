@@ -212,13 +212,13 @@ function Player({ courseId, video, next, tracking }: { courseId: string; video: 
             <ProgressBar value={pct} label={`${video.title} watched`} />
             <p className="muted" style={{ margin: 'var(--space-2) 0 0' }}>
               {completed
-                ? next ? 'The next video is unlocked.' : 'All videos in this course need to be watched to unlock the assessment.'
+                ? next ? 'The next video is unlocked.' : 'Every video in this course needs to be watched to unlock the assessment.'
                 : 'Watching 80% of the video completes it. Skipped parts and playback in a hidden tab are not counted.'}
             </p>
           </div>
           {completed && (next
             ? <Link className="button button-primary" to={`/courses/${courseId}/videos/${next.id}`}>Next video</Link>
-            : <Link className="button button-primary" to={`/courses/${courseId}`}>Back to the course</Link>)}
+            : <Link className="button button-primary" to={`/courses/${courseId}/assessment`}>Go to the assessment</Link>)}
         </div>
       </Card>
     </div>
