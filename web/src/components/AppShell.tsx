@@ -14,7 +14,10 @@ const learnerNav: NavItem[] = [
 ]
 
 // Admin screens are added here as they are built (execution steps C1 and C5).
-const adminNav: NavItem[] = [{ to: '/admin', label: 'Manage courses', icon: 'layers' }]
+const adminNav: NavItem[] = [
+  { to: '/admin', label: 'Manage courses', icon: 'layers', end: true },
+  { to: '/admin/users', label: 'Users', icon: 'users' },
+]
 
 function Shell() {
   const session = useSession()

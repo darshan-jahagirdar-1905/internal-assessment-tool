@@ -215,6 +215,7 @@ function CourseEditor() {
               Publish
             </button>
           )}
+          {!isDraft && <Link className="button button-secondary" to={`/admin/courses/${id}/results`}>Results &amp; assign</Link>}
           <button
             className="button button-secondary"
             disabled={busy}

@@ -45,3 +45,14 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   }
   return body as T
 }
+
+// For file downloads (CSV export): same headers as apiRequest, returns the file.
+export async function apiDownload(path: string): Promise<{ blob: Blob; filename: string }> {
+  const headers = new Headers()
+  const testUser = getTestUser()
+  if (testUser) headers.set('x-test-user', testUser)
+  const res = await fetch(`/api${path}`, { headers, credentials: 'same-origin' })
+  if (!res.ok) throw new ApiError(res.status, res.statusText)
+  const match = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')
+  return { blob: await res.blob(), filename: match?.[1] ?? 'export.csv' }
+}

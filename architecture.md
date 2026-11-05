@@ -450,9 +450,9 @@ Every route checks that the course, video or attempt belongs to an enrollment of
 | `POST /courses/:id/publish` | Validate and lock. Needs ≥ 1 video, ≥ 1 question, every video still embeddable; single-choice has exactly 1 correct option, multiple-choice ≥ 1 |
 | `POST /courses/:id/duplicate` | Copy as a new draft (the only way to change a published course) |
 | `POST /courses/:id/archive` | Hide from the course list; enrolled learners keep their results |
-| `POST /courses/:id/assign` | Body: `{ emails[] }`. Creates missing users (allowed domains only) and enrollments with `source = 'admin'`. Returns `{ enrolled, already_enrolled, rejected[] }` |
+| `POST /courses/:id/assign` | Body: `{ emails[] }` (up to 500). Published courses that aren't past their due date only. Creates missing users (allowed domains only) and enrollments with `source = 'admin'`. Returns `{ enrolled, already_enrolled, rejected[] }`, each rejected entry with its reason (not an email, or not a company domain) |
 | `GET /users` | Search and list users |
-| `PUT /users/:id/role` | Make a user an admin or a learner |
+| `PUT /users/:id/role` | Make a user an admin or a learner. An admin can't change their own role (so there is always at least one admin); logged as `user.role_changed` |
 | `GET /courses/:id/tracking` | Enrollments with person, source, video progress, status, score, pass/fail |
 | `GET /enrollments/:id/report` | Video progress and every attempt with every answer and correctness |
 | `GET /courses/:id/stats` | Enrolled, videos done, completed, pass rate, average score, % correct per question |
@@ -470,7 +470,11 @@ Every route checks that the course, video or attempt belongs to an enrollment of
 | `/courses/:id` | Course page: video list with progress and locks, the assessment card |
 | `/courses/:id/videos/:videoId` | Video player with progress bar ("Watched 64% — 80% unlocks the next step") |
 | `/courses/:id/assessment` | Questions with autosave, submit confirmation, score |
-| `/admin/*` | Courses, course editor (details, videos, questions), assign, tracking, reports, users |
+| `/admin` | Courses: list with counts, new course |
+| `/admin/courses/:id` | Course editor: details, videos, questions, publish, duplicate, archive, pass mark |
+| `/admin/courses/:id/results` | Stats, assign by email, everyone's progress, score and pass/fail, % correct per question, CSV download |
+| `/admin/enrollments/:id` | One person's report: video progress and every answer with its correctness |
+| `/admin/users` | Search users, make someone an admin or a learner |
 
 All server calls go through `web/src/api/learnerApi.ts` and `web/src/api/adminApi.ts`.
 
@@ -536,7 +540,7 @@ Due dates are optional (none for the pilot). When set: after `due_at`, videos an
 
 ### 9.6 Export
 
-One row per enrollment: name, email, employee code, source, enrolled at, videos completed, status, score %, passed, completed at. Any cell starting with `=`, `+`, `-` or `@` is prefixed with `'`, so Excel won't treat it as a formula.
+One row per enrollment: name, email, employee code, source, enrolled at, videos completed, status, score %, passed, completed at. Dates are India time (`YYYY-MM-DD HH:MM`). Any cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return is prefixed with `'`, so Excel won't treat it as a formula. The file starts with a UTF-8 byte-order mark so Excel reads names correctly.
 
 ### 9.7 Editing after publishing
 
@@ -614,7 +618,7 @@ Published courses are read-only, except the pass mark (9.3). To change videos or
 │   │   ├── index.ts              # admin check, then routes to a handler
 │   │   └── routes/               # courses, videos, questions, assign, users, reports
 │   ├── dev.ts                    # local API server (Node), used by npm run dev:api
-│   └── lib/                      # config.ts, db.ts, email.ts, identity.ts, origin.ts, workos.ts, youtube.ts, csv.ts
+│   └── lib/                      # config.ts, db.ts, email.ts, identity.ts, origin.ts, users.ts, workos.ts, youtube.ts, csv.ts, activity.ts, http.ts
 ├── .github/workflows/ci.yml      # CI on every push to main: typecheck, lint, build, migrations + RLS check, repo rules
 ├── scripts/                      # check-rls.sql (section 6.2 checks), ci-supabase-roles.sql (CI only)
 ├── supabase/
@@ -652,7 +656,7 @@ Everyone works across all modules; anyone can pick up any step.
 | 5 | Admin course builder: details, videos, questions, publish, duplicate, archive, pass mark changeable after publishing (with a migration that drops `attempts.passed`). **Done 5 Nov 2026 (C1)** | 4 |
 | 6 | Learner: dashboard, course list, enroll, video player with tracking. **Done 5 Nov 2026 (C2: dashboard, catalog, enroll, course page; C3: video player with tracking)** | 4 |
 | 7 | Assessment: unlock, start, autosave, submit, score. **Done 5 Nov 2026 (C4)** | 6 |
-| 8 | Admin: assign, tracking, reports, stats, export, users | 5, 7 |
+| 8 | Admin: assign, tracking, reports, stats, export, users; indexes for the four unindexed foreign keys. **Done 5 Nov 2026 (C5)** | 5, 7 |
 | 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page. Built and tested with the Staging keys now in Vercel | WorkOS account (done), redirect URI set |
 | 10 | Course content: Claude drafts 30 single-choice questions from the *Email Etiquette* transcript, each with the timestamp it comes from; the team approves; an admin enters it in the builder (70% pass mark) | 5; video link and transcript |
 | 11 | Test round: 4–5 people run the whole journey on production | 5–10 |
@@ -664,7 +668,7 @@ Claude builds steps 5–9 one after another (decision, 4 Nov 2026). Timeline: as
 
 **Status (4 Nov 2026):** step 4 is done (Phase B, "Database"): the schema, RLS and database functions are live on Supabase and match the committed migration exactly; CI runs the function tests on every push; the first admin exists. Known, deliberate: the Supabase Advisor reports "RLS enabled, no policy" (the design), and four foreign keys have no index yet (fine at pilot size; indexes come with the admin reports). Next: steps 5 and 6 (Phase C).
 
-**Status (5 Nov 2026):** steps 5–7 are done and on production (C1–C4 in the execution plan doc): the course builder, the learner dashboard, catalog and course page, the video player with watch tracking, and the assessment. Nobody can sign in on production until step 9 (WorkOS), so features are tried with test sign-in. Next: step 8 (C5, admin tracking and reports), then step 9 (C6).
+**Status (5 Nov 2026):** steps 5–8 are done and on production (C1–C5 in the execution plan doc): the course builder, the learner dashboard, catalog and course page, the video player with watch tracking, the assessment, and admin assign, results, reports, export and users. Migration `20261105120000_foreign_key_indexes.sql` adds the four missing foreign-key indexes. Nobody can sign in on production until step 9 (WorkOS), so features are tried with test sign-in. Next: step 9 (C6).
 
 ---
 

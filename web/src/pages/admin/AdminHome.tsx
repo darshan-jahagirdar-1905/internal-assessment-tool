@@ -4,7 +4,7 @@ import { createCourse, listCourses, type CourseSummary } from '../../api/adminAp
 import { Badge, Card, EmptyState } from '../../components/ui.tsx'
 import { statusBadge } from './courseStatus.ts'
 
-// Course list and "New course" (execution step C1).
+// Course list and "New course" (execution step C1); results links (C5).
 function AdminHome() {
   const navigate = useNavigate()
   const [courses, setCourses] = useState<CourseSummary[] | null>(null)
@@ -69,6 +69,7 @@ function AdminHome() {
                   <th>Enrolled</th>
                   <th>Completed</th>
                   <th>Avg. score</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -82,6 +83,7 @@ function AdminHome() {
                     <td>{c.enrolled}</td>
                     <td>{c.completed}</td>
                     <td>{c.average_score === null ? '—' : `${c.average_score}%`}</td>
+                    <td>{c.status !== 'draft' && <Link to={`/admin/courses/${c.id}/results`}>Results</Link>}</td>
                   </tr>
                 ))}
               </tbody>

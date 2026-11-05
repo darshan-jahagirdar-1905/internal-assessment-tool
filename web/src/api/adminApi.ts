@@ -1,5 +1,5 @@
 // All admin calls (/api/admin/*). Endpoints: architecture.md section 7.3.
-import { apiRequest } from './client.ts'
+import { apiDownload, apiRequest } from './client.ts'
 
 export const adminRequest = <T>(path: string, init?: RequestInit) => apiRequest<T>(`/admin${path}`, init)
 
@@ -65,3 +65,81 @@ export const archiveCourse = (id: string) => adminRequest<Course>(`/courses/${id
 export const setPassMark = (id: string, pass_percentage: number) =>
   adminRequest<Course>(`/courses/${id}/pass-mark`, json('PUT', { pass_percentage }))
 export const checkVideo = (url: string) => adminRequest<VideoCheck>('/videos/check', json('POST', { url }))
+
+// Assign, tracking, reports, stats, export, users (step C5). Pass/fail is
+// worked out by the API from the current pass mark.
+export type CourseHead = {
+  id: string; title: string; status: CourseStatus; pass_percentage: number
+  video_count: number; question_count: number; past_due: boolean
+}
+
+export type EnrollmentStatus = 'enrolled' | 'videos_done' | 'assessment_in_progress' | 'completed'
+
+export type TrackingRow = {
+  id: string
+  email: string
+  full_name: string | null
+  employee_code: string | null
+  signed_in: boolean
+  source: 'self' | 'admin'
+  enrolled_at: string
+  status: EnrollmentStatus
+  completed_at: string | null
+  videos_completed: number
+  progress_pct: number
+  score_pct: number | null
+  passed: boolean | null
+}
+
+export type CourseStats = {
+  course: CourseHead
+  enrolled: number
+  videos_done: number
+  completed: number
+  passed: number
+  pass_rate: number | null
+  average_score: number | null
+  questions: { id: string; position: number; text: string; type: QuestionType; answered: number; correct: number; pct_correct: number | null }[]
+}
+
+export type AssignResult = {
+  enrolled: number
+  already_enrolled: number
+  rejected: { input: string; reason: 'invalid' | 'domain' }[]
+}
+
+export type EnrollmentReport = {
+  course: CourseHead
+  enrollment: TrackingRow
+  videos: {
+    id: string; position: number; title: string; duration_seconds: number
+    watched_segments: number; total_segments: number; watched_pct: number
+    completed_at: string | null; last_reported_at: string | null
+  }[]
+  attempts: {
+    id: string; attempt_no: number; status: 'in_progress' | 'submitted'; submit_reason: 'learner' | 'due_date' | null
+    started_at: string; submitted_at: string | null
+    score_points: number | null; max_points: number | null; score_pct: number | null; passed: boolean | null
+    answers: {
+      question_id: string; position: number; text: string; type: QuestionType; points: number
+      is_correct: boolean | null; points_awarded: number | null
+      options: { id: string; text: string; is_correct: boolean; selected: boolean }[]
+    }[]
+  }[]
+}
+
+export type AdminUser = {
+  id: string; email: string; full_name: string | null; role: 'learner' | 'admin'
+  employee_code: string | null; first_signed_in_at: string | null; created_at: string; enrollments: number
+}
+
+export const assignByEmail = (id: string, emails: string[]) =>
+  adminRequest<AssignResult>(`/courses/${id}/assign`, json('POST', { emails }))
+export const getTracking = (id: string) =>
+  adminRequest<{ course: CourseHead; enrollments: TrackingRow[] }>(`/courses/${id}/tracking`)
+export const getStats = (id: string) => adminRequest<CourseStats>(`/courses/${id}/stats`)
+export const getEnrollmentReport = (id: string) => adminRequest<EnrollmentReport>(`/enrollments/${id}/report`)
+export const downloadExport = (id: string) => apiDownload(`/admin/courses/${id}/export`)
+export const listUsers = (q: string) => adminRequest<{ users: AdminUser[] }>(`/users?q=${encodeURIComponent(q)}`)
+export const setUserRole = (id: string, role: 'learner' | 'admin') =>
+  adminRequest<AdminUser>(`/users/${id}/role`, json('PUT', { role }))
