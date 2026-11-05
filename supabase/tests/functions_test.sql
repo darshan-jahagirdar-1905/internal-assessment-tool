@@ -90,8 +90,14 @@ begin
          jsonb_build_object('question_id', q2, 'selected_option_ids', jsonb_build_array(o2a))));
   assert s = 50.00, format('score %s, expected 50.00', s);
   select * into r from attempts where id = a_id;
-  assert r.status = 'submitted' and r.submit_reason = 'learner' and r.score_points = 1 and r.max_points = 2 and not r.passed,
-    'attempt should be submitted with 1/2 points and not passed';
+  assert r.status = 'submitted' and r.submit_reason = 'learner' and r.score_points = 1 and r.max_points = 2,
+    'attempt should be submitted with 1/2 points';
+  -- Pass/fail is computed from the current pass mark (60%): 1/2 fails.
+  assert not (r.score_points * 100 >= (select pass_percentage from courses where id = c_id) * r.max_points), '50% should fail a 60% pass mark';
+  -- Lowering the pass mark after publishing flips pass/fail; the score stays.
+  update courses set pass_percentage = 50 where id = c_id;
+  assert (r.score_points * 100 >= (select pass_percentage from courses where id = c_id) * r.max_points), '50% should pass once the mark is 50%';
+  assert (select score_pct from attempts where id = a_id) = 50.00, 'changing the pass mark never changes the score';
   assert (select is_correct from answers where attempt_id = a_id and question_id = q2) = false, 'partial multiple-choice is wrong';
 
   -- Double submit returns the stored score and changes nothing.
@@ -133,7 +139,7 @@ begin
   assert n = 1, format('auto-submit submitted %s attempts, expected 1', n);
   select * into r from attempts where id = a_id;
   assert r.submit_reason = 'due_date' and r.score_pct = 50.00, 'auto-submit should score 50 with reason due_date';
-  assert r.passed, '50% must pass an exactly-50% pass mark';
+  assert r.score_points * 100 >= (select pass_percentage from courses where id = c2_id) * r.max_points, '50% must pass an exactly-50% pass mark';
   assert (select points_awarded from answers where attempt_id = a_id and question_id = q2) = 0, 'unanswered scores 0';
 
   -- Past due: no new video credit or attempt.

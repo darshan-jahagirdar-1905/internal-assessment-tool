@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom'
 import { AdminOnly, AppShell } from './components/AppShell.tsx'
 import AdminHome from './pages/admin/AdminHome.tsx'
+import CourseEditor from './pages/admin/CourseEditor.tsx'
 import Catalog from './pages/learner/Catalog.tsx'
 import Dashboard from './pages/learner/Dashboard.tsx'
 import SignIn from './pages/learner/SignIn.tsx'
@@ -13,7 +14,8 @@ function App() {
       <Route element={<AppShell />}>
         <Route index element={<Dashboard />} />
         <Route path="/courses" element={<Catalog />} />
-        <Route path="/admin/*" element={<AdminOnly><AdminHome /></AdminOnly>} />
+        <Route path="/admin" element={<AdminOnly><AdminHome /></AdminOnly>} />
+        <Route path="/admin/courses/:id" element={<AdminOnly><CourseEditor /></AdminOnly>} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

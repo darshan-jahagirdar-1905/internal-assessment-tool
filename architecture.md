@@ -303,7 +303,6 @@ create table attempts (
   score_points   int,
   max_points     int,
   score_pct      numeric(5,2),
-  passed         boolean,                              -- admin-only; dropped in execution step 5, pass/fail is computed (9.3)
   unique (enrollment_id, attempt_no)
 );
 
@@ -334,7 +333,7 @@ create table activity_log (
 create index activity_log_course_idx on activity_log (course_id, created_at);
 ```
 
-The migration that creates all of this is `supabase/migrations/20261104120000_initial_schema.sql`; the functions in section 9 are in the same file.
+Migrations: `20261104120000_initial_schema.sql` (all of the above and the functions in section 9), `20261104130000_first_admin.sql`, and `20261105100000_compute_pass_fail.sql` (drops the stored pass/fail column `attempts.passed`; pass/fail is computed, section 9.3).
 
 Values shown in the UI that are not stored:
 
@@ -402,7 +401,7 @@ One Hono app (`server/app.ts`), run on Vercel through a single entry file, `api/
 - **Admin routes:** `/api/admin/*`, in `server/admin/`. Middleware: a signed-in user with `role = 'admin'` is required.
 - Each group has a thin `index.ts` that runs its check once, then hands off to a handler in its `routes/` folder (one file per area). No handler runs before the check.
 - Every route validates its request body with Zod.
-- Learner routes **never** return `options.is_correct`, `answers.is_correct`, `answers.points_awarded`, `attempts.passed` or `courses.pass_percentage`.
+- Learner routes **never** return `options.is_correct`, `answers.is_correct`, `answers.points_awarded`, pass/fail or `courses.pass_percentage`.
 - The site and the API share one domain, so no CORS headers are sent. Every non-GET request must have an `Origin` matching the site's own host (`server/lib/origin.ts`).
 
 ### 7.1 Public
@@ -480,7 +479,7 @@ All server calls go through `web/src/api/learnerApi.ts` and `web/src/api/adminAp
 
 ### 9.1 Video watch tracking
 
-- **Segments:** each video is split into 5-second segments. `videos.duration_seconds` is read from the YouTube player in the admin's browser when the video is added.
+- **Segments:** each video is split into 5-second segments. `videos.duration_seconds` is read from the YouTube player in the admin's browser when the video is added; if YouTube can't be reached from that browser (e.g. a blocked network), the admin types the length (minutes:seconds).
 - **Browser:** while the video is playing and the tab is visible, the page records which segments the playhead passes through. It reports them every ~15 s, on pause, on end, and when the page is hidden or closed (`fetch` with `keepalive`).
 - **Server (`record_video_progress` function, one transaction):**
   1. Rejects the report if the video is locked (an earlier video is not complete) or the course is past its due date.
@@ -649,7 +648,7 @@ Everyone works across all modules; anyone can pick up any step.
 | 2 | API scaffold: Hono app, Vercel entry, `vercel.json` (region `bom1`), `GET /api/health`, `getCurrentUser()` with test sign-in, Deno stubs removed. Then Vercel's Root Directory is cleared | 1 |
 | 3 | CI: typecheck, lint, build; migrations against a test Postgres; RLS checks; `progress.md` check, run on every push to `main`. Until V1, branch protection only blocks force pushes and deleting `main` | 2 |
 | 4 | Schema, RLS and database functions; seed data | 1 |
-| 5 | Admin course builder: details, videos, questions, publish, duplicate, archive, pass mark changeable after publishing (with a migration that drops `attempts.passed`) | 4 |
+| 5 | Admin course builder: details, videos, questions, publish, duplicate, archive, pass mark changeable after publishing (with a migration that drops `attempts.passed`). **Done 5 Nov 2026 (C1)** | 4 |
 | 6 | Learner: dashboard, course list, enroll, video player with tracking | 4 |
 | 7 | Assessment: unlock, start, autosave, submit, score | 6 |
 | 8 | Admin: assign, tracking, reports, stats, export, users | 5, 7 |

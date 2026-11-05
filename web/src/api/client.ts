@@ -22,9 +22,11 @@ export function setTestUser(email: string | null): void {
 
 export class ApiError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  readonly details: unknown
+  constructor(status: number, message: string, details?: unknown) {
     super(message)
     this.status = status
+    this.details = details
   }
 }
 
@@ -38,8 +40,8 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const res = await fetch(`/api${path}`, { ...init, headers, credentials: 'same-origin' })
   const body: unknown = await res.json().catch(() => null)
   if (!res.ok) {
-    const code = (body as { error?: string } | null)?.error ?? res.statusText
-    throw new ApiError(res.status, code)
+    const err = body as { error?: string; details?: unknown } | null
+    throw new ApiError(res.status, err?.error ?? res.statusText, err?.details)
   }
   return body as T
 }

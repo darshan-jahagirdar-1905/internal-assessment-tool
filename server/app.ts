@@ -3,6 +3,7 @@ import { admin } from './admin/index.js'
 import { learner } from './learner/index.js'
 import { testSigninEnabled } from './lib/config.js'
 import { databaseIsUp } from './lib/db.js'
+import { HttpError } from './lib/http.js'
 import { sameOriginOnly } from './lib/origin.js'
 
 export const app = new Hono().basePath('/api')
@@ -21,6 +22,7 @@ app.route('/', learner)
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404))
 app.onError((err, c) => {
+  if (err instanceof HttpError) return c.json({ error: err.message, details: err.details }, err.status)
   console.error(err)
   return c.json({ error: 'server_error' }, 500)
 })

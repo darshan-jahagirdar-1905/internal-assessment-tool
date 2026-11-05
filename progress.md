@@ -6,6 +6,7 @@ Every change to this repo gets one row here, newest first, in the same commit as
 
 | Date | Who | Area | What changed |
 |---|---|---|---|
+| 2026-11-05 | Darshan | admin-ui | Admins can now build courses: create a draft, add YouTube videos (private or non-embeddable links are refused), write questions with the correct answers marked, publish, duplicate, archive, and change the pass mark at any time; pass/fail is no longer stored but worked out from the current pass mark. Next: apply the pass/fail migration on Supabase, then C2 |
 | 2026-11-05 | Darshan | admin-ui | Site restyled to match the Transfunnel HRMS: white top bar, teal navigation, white cards on grey, Exo 2 font, works on phones; new page shell with role-based menu (admins see Manage courses), welcome dashboard, course catalog page and sign-in page. Known issue: text logo until the logo file arrives |
 | 2026-11-04 | Darshan | docs | Plan updated with the team's decisions: one Supabase project cleared before go-live, free plans for now, WorkOS Staging keys until go-live, Claude builds the features in order, 30-question course drafted from the transcript, pass mark (70% default) changeable any time with pass/fail recalculated, 4–5 testers then a 60–80 person pilot |
 | 2026-11-04 | Darshan | db | Phase B (Database) done: schema, RLS and functions live on Supabase and matching the repo, function tests in CI, and Darshan set up as the first admin. Next: Phase C, the features |

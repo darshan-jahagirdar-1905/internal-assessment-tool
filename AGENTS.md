@@ -59,7 +59,7 @@ If the committing person's email is blank, ask for it once and add it to this ta
 3. **RLS stays on every table, with no policies for public access.** The `anon` and `authenticated` roles get no table or function privileges.
 4. **The browser never queries tables directly.** All data goes through the `/api` (learner) and `/api/admin` routes.
 5. **`DATABASE_URL` and other server secrets are only in Vercel server environment variables.** Never in frontend code, never with a `VITE_` prefix, never committed.
-6. **Learner routes never return `options.is_correct`, `answers.is_correct`, `answers.points_awarded`, `attempts.passed` or `courses.pass_percentage`.** Learners see only their score.
+6. **Learner routes never return `options.is_correct`, `answers.is_correct`, `answers.points_awarded`, pass/fail or `courses.pass_percentage`.** Learners see only their score.
 7. **Every learner query is scoped to the user returned by `getCurrentUser()`** (`server/lib/identity.ts`). The API never accepts a user id from the browser for learner routes.
 8. **Every admin request checks that the signed-in user has `role = 'admin'` first.** Identity is worked out only in `server/lib/identity.ts`; sign-in uses WorkOS AuthKit (`architecture.md` section 4.3).
 9. **Every new database function gets** `revoke execute ... from public, anon, authenticated`. The API connects as the owner role, so no grant is needed.
