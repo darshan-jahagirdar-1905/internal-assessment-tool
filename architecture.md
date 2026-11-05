@@ -39,6 +39,7 @@ The first course is *Email Etiquette*, built from a YouTube video.
 | Layer | Choice | Notes |
 |---|---|---|
 | Frontend | React + Vite + TypeScript, React Router | One app: employee pages and `/admin/*` |
+| Look | Plain CSS matched to the Transfunnel HRMS brand (teal gradient nav bar, white cards on light grey), font Exo 2 from Google Fonts, inline line icons | Theme variables in `web/src/index.css`; shared blocks in `web/src/components/`. No UI or icon packages |
 | API | Node + TypeScript, built with Hono, running as Vercel Functions | Same domain as the site, under `/api/*`. Zod validates every request body |
 | Database | Supabase, used **only** as managed Postgres | RLS on every table, no direct browser access. No Supabase Storage, Realtime or table access from `supabase-js` |
 | Database driver | `postgres` (postgres.js) over Supabase's connection pooler | Plain SQL; works with any Postgres host |
@@ -464,7 +465,8 @@ Every route checks that the course, video or attempt belongs to an enrollment of
 | Route | Screen |
 |---|---|
 | `/signin` | "Sign in with your company email" button (goes to `/api/auth/signin`); on previews, test sign-in instead. Shows "Use your company email" after a refused domain |
-| `/` | Dashboard: my courses (progress, score) and the course list |
+| `/` | Dashboard: my courses (progress, score) |
+| `/courses` | Course catalog: published courses, enroll |
 | `/courses/:id` | Course page: video list with progress and locks, the assessment card |
 | `/courses/:id/videos/:videoId` | Video player with progress bar ("Watched 64% — 80% unlocks the next step") |
 | `/courses/:id/assessment` | Questions with autosave, submit confirmation, score |
@@ -556,7 +558,7 @@ Published courses are read-only, except the pass mark (9.3). To change videos or
 | Results | Learners see their score only |
 | Watch tracking | Server-side limit on credit per report; video order enforced on the server |
 | Files | Export escaped against formula injection |
-| Transport | HTTPS only; `Referrer-Policy: strict-origin-when-cross-origin`; the only third-party script is YouTube's player, on video pages |
+| Transport | HTTPS only; `Referrer-Policy: strict-origin-when-cross-origin`; the only third-party script is YouTube's player, on video pages; the Exo 2 font stylesheet loads from Google Fonts |
 | Audit | `activity_log` records sign-in, publish, duplicate, archive, assign, enroll, role change, video completed, attempt start and submit, export |
 
 ---
@@ -598,8 +600,8 @@ Published courses are read-only, except the pass mark (9.3). To change videos or
 │       │   ├── learner/          # SignIn, Dashboard, Course, Video, Assessment
 │       │   └── admin/            # Courses, CourseEditor, Assign, Tracking, Reports, Users
 │       ├── api/                  # learnerApi.ts, adminApi.ts (fetch wrappers)
-│       ├── components/           # VideoPlayer (YouTube + tracking), ...
-│       └── lib/
+│       ├── components/           # AppShell (top bar + teal nav), ui.tsx (Card, StatTile, EmptyState, Badge, Logo), Icon, VideoPlayer, ...
+│       └── lib/                  # session (who is signed in), helpers
 ├── api/
 │   └── index.ts                  # Vercel entry: hands every /api/* request to the Hono app
 ├── server/                       # the Hono app; no Vercel-specific code

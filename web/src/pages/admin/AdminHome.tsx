@@ -1,11 +1,16 @@
-// Placeholder. Admin screens (courses, course editor, assign, tracking,
-// reports, users) are built from execution step C1. See architecture.md section 8.
+import { Card, EmptyState } from '../../components/ui.tsx'
+
+// Course management. The course builder arrives in execution step C1.
 function AdminHome() {
   return (
-    <main>
-      <h1>Admin</h1>
-      <p>Admin screens are not built yet.</p>
-    </main>
+    <>
+      <div className="page-header">
+        <h1>Manage courses</h1>
+      </div>
+      <Card title="Courses">
+        <EmptyState title="No courses yet" text="The course builder is coming next." />
+      </Card>
+    </>
   )
 }
 

@@ -6,6 +6,7 @@ Every change to this repo gets one row here, newest first, in the same commit as
 
 | Date | Who | Area | What changed |
 |---|---|---|---|
+| 2026-11-05 | Darshan | admin-ui | Site restyled to match the Transfunnel HRMS: white top bar, teal navigation, white cards on grey, Exo 2 font, works on phones; new page shell with role-based menu (admins see Manage courses), welcome dashboard, course catalog page and sign-in page. Known issue: text logo until the logo file arrives |
 | 2026-11-04 | Darshan | docs | Plan updated with the team's decisions: one Supabase project cleared before go-live, free plans for now, WorkOS Staging keys until go-live, Claude builds the features in order, 30-question course drafted from the transcript, pass mark (70% default) changeable any time with pass/fail recalculated, 4–5 testers then a 60–80 person pilot |
 | 2026-11-04 | Darshan | db | Phase B (Database) done: schema, RLS and functions live on Supabase and matching the repo, function tests in CI, and Darshan set up as the first admin. Next: Phase C, the features |
 | 2026-11-04 | Darshan | db | Database schema written: 10 tables with RLS on and no public access, plus the functions that record video progress (80% rule, in order, capped at 2x speed), start and submit the assessment (scoring, one attempt) and auto-submit after the due date; tested in CI; sample data for local use. Next: apply it to Supabase |

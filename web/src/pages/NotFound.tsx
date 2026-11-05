@@ -1,11 +1,14 @@
 import { Link } from 'react-router-dom'
+import { EmptyState } from '../components/ui.tsx'
 
 function NotFound() {
   return (
-    <main>
-      <p>Page not found.</p>
-      <Link to="/">Go to my courses</Link>
-    </main>
+    <div className="page">
+      <EmptyState title="Page not found" />
+      <p style={{ textAlign: 'center' }}>
+        <Link to="/">Go to my courses</Link>
+      </p>
+    </div>
   )
 }
 
