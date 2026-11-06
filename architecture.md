@@ -659,7 +659,7 @@ Everyone works across all modules; anyone can pick up any step.
 | 6 | Learner: dashboard, course list, enroll, video player with tracking. **Done 5 Nov 2026 (C2: dashboard, catalog, enroll, course page; C3: video player with tracking)** | 4 |
 | 7 | Assessment: unlock, start, autosave, submit, score. **Done 5 Nov 2026 (C4)** | 6 |
 | 8 | Admin: assign, tracking, reports, stats, export, users; indexes for the four unindexed foreign keys. **Done 5 Nov 2026 (C5)** | 5, 7 |
-| 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page. Built and tested with the Staging keys now in Vercel. **Code done 5 Nov 2026 (C6); end-to-end check on production waits for the WorkOS dashboard settings** | WorkOS account (done), redirect URI set |
+| 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page. Built and tested with the Staging keys now in Vercel. **Done 5 Nov 2026 (C6); checked on production 6 Nov 2026** | WorkOS account (done), redirect URI set |
 | 10 | Course content: Claude drafts 30 single-choice questions from the *Email Etiquette* transcript, each with the timestamp it comes from; the team approves; an admin enters it in the builder (70% pass mark) | 5; video link and transcript |
 | 11 | Test round: 4–5 people run the whole journey on production | 5–10 |
 | 12 | Go-live: clear test data, turn `TEST_SIGNIN` off, switch WorkOS to Production keys, accept WorkOS's DPA and add a line to an internal notice, RLS checklist and edge cases (section 11), then the pilot with 60–80 people | 11 |
@@ -671,6 +671,8 @@ Claude builds steps 5–9 one after another (decision, 4 Nov 2026). Timeline: as
 **Status (4 Nov 2026):** step 4 is done (Phase B, "Database"): the schema, RLS and database functions are live on Supabase and match the committed migration exactly; CI runs the function tests on every push; the first admin exists. Known, deliberate: the Supabase Advisor reports "RLS enabled, no policy" (the design), and four foreign keys have no index yet (fine at pilot size; indexes come with the admin reports). Next: steps 5 and 6 (Phase C).
 
 **Status (5 Nov 2026):** steps 5–8 are done and on production (C1–C5 in the execution plan doc): the course builder, the learner dashboard, catalog and course page, the video player with watch tracking, the assessment, and admin assign, results, reports, export and users. Migration `20261105120000_foreign_key_indexes.sql` adds the four missing foreign-key indexes. Step 9 (WorkOS sign-in, C6) is built and tested locally against a stand-in for WorkOS; signing in on production needs the WorkOS dashboard settings in section 4.3 (Staging environment). Next: those settings and the C6 production check, then Phase D.
+
+**Status (6 Nov 2026):** Phase C is done. WorkOS (Staging environment) is set up: Magic Auth only (email and password, passkeys and social providers off), redirect URI `https://internal-assessment-tool.vercel.app/api/auth/callback` and sign-out redirect `/signin`. On production, a `transfunnel.com` address signs in and lands as the right role, a Gmail address is refused with no session, sign-out ends the session, and the code email arrives in the inbox. Next: Phase D (step 10, course content).
 
 ---
 
