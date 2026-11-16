@@ -449,7 +449,7 @@ One Hono app (`server/app.ts`), run on Vercel through a single entry file, `api/
 
 | Method & path | Purpose |
 |---|---|
-| `GET /api/health` | `{ ok, db, testSignin }`: checks the database connection (503 when it is down) and says whether test sign-in is on, so the sign-in page knows whether to offer it. No user data |
+| `GET /api/health` | `{ ok, db, testSignin }`: checks the database connection (503 when it is down) and says whether test sign-in is on, so the sign-in page knows whether to offer it. No user data. Also called once a day by a Vercel Cron job (`vercel.json`) so the free Supabase database never pauses for inactivity |
 
 ### 7.1a Sign-in (`/api/auth`)
 
@@ -692,7 +692,7 @@ Decided 16 Nov 2026: courses work like a Duolingo path.
 ├── package.json                  # API dependencies and scripts (web/ has its own)
 ├── tsconfig.json, eslint.config.js  # API typecheck and lint
 ├── .env.example                  # local API settings (copy to .env, git-ignored)
-├── vercel.json                   # build web/, route /api/* to api/index.ts, region bom1
+├── vercel.json                   # build web/, route /api/* to api/index.ts, region bom1, daily keep-alive cron
 └── architecture.md
 ```
 
@@ -724,9 +724,9 @@ Everyone works across all modules; anyone can pick up any step.
 | 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page. Built and tested with the Staging keys now in Vercel. **Done 5 Nov 2026 (C6); checked on production 6 Nov 2026** | WorkOS account (done), redirect URI set |
 | 10 | Course content: replaced by step L5 (16 Nov 2026). The 30 drafted *Email Etiquette* questions (6 Nov) feed Level 2's quiz and the final test of *Workplace Communication* | 5; video link and transcript |
 | 11 | Test round: 4–5 people run the whole journey on production | 5–10 |
-| 12 | Go-live: keep the database from pausing (Supabase Pro or a daily keep-alive request), clear test data, turn `TEST_SIGNIN` off, switch WorkOS to Production keys, accept WorkOS's DPA and add a line to an internal notice, RLS checklist and edge cases (section 11), then the pilot with 60–80 people | 11 |
+| 12 | Go-live: confirm the daily keep-alive has kept the database awake (Supabase project status stays active), clear test data, turn `TEST_SIGNIN` off, switch WorkOS to Production keys, accept WorkOS's DPA and add a line to an internal notice, RLS checklist and edge cases (section 11), then the pilot with 60–80 people | 11 |
 
-**Status (16 Nov 2026):** levels are done and on production (steps L1 to L4). Migration `20261116100000_levels_and_level_quizzes.sql` is applied; the two existing courses each became a single "Level 1" and work as before. A regression pass the same day (fresh database: all migrations, RLS check and function tests; the old single-level learner, final test and admin flows; WorkOS sign-in against a stand-in; the level flow; every page on desktop and phone; production server errors and data consistency) found nothing broken. Found on the way: **the free Supabase plan pauses the database after about a week without activity**, which took production offline from roughly 6 to 16 Nov; it was restored with no data lost. Open decision before the pilot: Supabase Pro, or a daily automated request that keeps the project awake. Next: L5 (course content).
+**Status (16 Nov 2026):** levels are done and on production (steps L1 to L4). Migration `20261116100000_levels_and_level_quizzes.sql` is applied; the two existing courses each became a single "Level 1" and work as before. A regression pass the same day (fresh database: all migrations, RLS check and function tests; the old single-level learner, final test and admin flows; WorkOS sign-in against a stand-in; the level flow; every page on desktop and phone; production server errors and data consistency) found nothing broken. Found on the way: **the free Supabase plan pauses the database after about a week without activity**, which took production offline from roughly 6 to 16 Nov; it was restored with no data lost. Decided the same day: a daily automated request. A Vercel Cron job in `vercel.json` calls `GET /api/health` every day at 02:37 UTC (08:07 India time); the health check runs a query, which keeps the database active. Next: L5 (course content).
 
 **Execution plan, levels (decided 16 Nov 2026; section 9.8)**
 
