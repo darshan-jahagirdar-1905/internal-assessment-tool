@@ -1,6 +1,8 @@
 # Internal Learning Platform
 
-Employees sign in with their company email, enroll in courses, watch each course's videos, then take the course's assessment. Admins build courses, assign them and track results.
+Employees sign in with their company email (WorkOS sends a 6-digit code), enroll in courses and work through each course as a path of levels: a level's videos, then a short quiz that must be answered fully right to unlock the next level, then a final test that gives their score. Admins build courses (with an import box for question lists), assign them by email and track results.
+
+Live at https://internal-assessment-tool.vercel.app. Status and next steps: `architecture.md` section 13.
 
 | Path | What |
 |---|---|

@@ -178,15 +178,16 @@ The session cookie lasts up to 30 days in the browser; the WorkOS session length
 | # | Step | Screen | API | Tables |
 |---|---|---|---|---|
 | 1 | Admin creates a draft course: title, description, pass %, optional due date | Admin › Course editor | `POST /admin/courses`, `PUT /admin/courses/:id` | `courses` |
-| 2 | Admin adds YouTube videos in order; each is checked as embeddable and its length is read | Admin › Course editor › Videos | `POST /admin/videos/check`, `PUT /admin/courses/:id/videos` | `videos` |
-| 3 | Admin adds questions and options, then publishes (the course becomes read-only, except its pass mark) | Admin › Course editor › Assessment | `PUT /admin/courses/:id/questions`, `POST /admin/courses/:id/publish` | `questions`, `options` |
+| 2 | Admin lays out the levels; each level gets YouTube videos in order (each checked as embeddable, its length read) and its quiz questions, typed or pasted with Import questions; the final test gets its questions; one Save stores the whole path | Admin › Course editor › Levels, Final test | `POST /admin/videos/check`, `PUT /admin/courses/:id/content` | `levels`, `videos`, `questions`, `options` |
+| 3 | Admin publishes (the course becomes read-only, except its pass mark) | Admin › Course editor | `POST /admin/courses/:id/publish` | `courses` |
 | 4 | Admin assigns the course to people by email | Admin › Course › Assign | `POST /admin/courses/:id/assign` | `users`, `enrollments` |
 | 5 | Employee signs in and sees the dashboard: enrolled courses and the course list | Dashboard | `GET /me`, `GET /courses` | `users`, `courses`, `enrollments` |
 | 6 | Employee enrolls in a published course | Course page | `POST /courses/:id/enroll` | `enrollments` |
-| 7 | Employee watches videos in order; progress is saved every ~15 s and on pause or leaving the page; playback resumes where it stopped | Course › Video | `GET /courses/:id`, `POST /videos/:id/progress` | `video_progress` |
-| 8 | When every video is ≥ 80%, the assessment unlocks; employee starts it; each answer saves immediately | Course › Assessment | `POST /courses/:id/attempt`, `GET /attempts/:id`, `PUT /attempts/:id/answers` | `attempts`, `answers` |
-| 9 | Employee submits; the score is calculated and shown | Course › Result | `POST /attempts/:id/submit` | `attempts`, `answers`, `enrollments` |
-| 10 | Admin tracks enrollments, video progress and scores; views reports and stats; exports CSV | Admin › Tracking, Reports | `GET /admin/courses/:id/tracking`, `GET /admin/enrollments/:id/report`, `GET /admin/courses/:id/stats`, `GET /admin/courses/:id/export` | all |
+| 7 | Employee works through the level path: each level's videos in order (progress saved every ~15 s and on pause or leaving the page; playback resumes where it stopped) | Course › Video | `GET /courses/:id`, `POST /videos/:id/progress` | `video_progress` |
+| 8 | After a level's videos, the employee takes its quiz until every answer is right (sees the score and which questions were wrong); passing unlocks the next level | Course › Level quiz | `GET /levels/:id/quiz`, `POST /levels/:id/quiz` | `level_quiz_attempts` |
+| 9 | When every level is passed, the final test unlocks; employee starts it; each answer saves immediately | Course › Final test | `POST /courses/:id/attempt`, `GET /attempts/:id`, `PUT /attempts/:id/answers` | `attempts`, `answers` |
+| 10 | Employee submits; the score is calculated and shown | Course › Result | `POST /attempts/:id/submit` | `attempts`, `answers`, `enrollments` |
+| 11 | Admin tracks enrollments, levels passed, video progress and scores; views reports and stats; exports CSV | Admin › Tracking, Reports | `GET /admin/courses/:id/tracking`, `GET /admin/enrollments/:id/report`, `GET /admin/courses/:id/stats`, `GET /admin/courses/:id/export` | all |
 
 ---
 
@@ -580,7 +581,7 @@ Their final-test score % and the date, per course. **Never** pass/fail, the pass
 
 ### 9.5 Due dates and auto-submit
 
-Due dates are optional (none for the pilot). When set: after `due_at`, videos and the assessment are read-only and the learner sees their results only. An attempt left open at the due date is submitted automatically **on demand** with its saved answers (`submit_reason = 'due_date'`), by `auto_submit_overdue(course_id)`, which runs at the start of learner requests for that course and admin tracking, report, stats and export requests. No scheduled job.
+Due dates are optional (none for the pilot). When set: after `due_at`, videos, level quizzes and the final test are read-only and the learner sees their results only. An attempt left open at the due date is submitted automatically **on demand** with its saved answers (`submit_reason = 'due_date'`), by `auto_submit_overdue(course_id)`, which runs at the start of learner requests for that course and admin tracking, report, stats and export requests. No scheduled job.
 
 ### 9.6 Export
 
@@ -619,11 +620,11 @@ Decided 16 Nov 2026: courses work like a Duolingo path.
 | Identity | One `getCurrentUser()` step on every request; learners only ever see their own data; admin routes need `role = 'admin'` |
 | Test sign-in | Local (and preview) only; never in production; turned off everywhere, and test data cleared, before the pilot |
 | Answer key | Never returned to learners; scoring runs in the database |
-| Results | Learners see their score only |
-| Watch tracking | Server-side limit on credit per report; video order enforced on the server |
+| Results | Learners see their final-test score only; after a level-quiz try, also how many were right and which questions were wrong, never the correct option (9.8) |
+| Watch tracking | Server-side limit on credit per report; video and level order enforced on the server |
 | Files | Export escaped against formula injection |
 | Transport | HTTPS only; `Referrer-Policy: strict-origin-when-cross-origin`; the only third-party script is YouTube's player, on video pages; the Exo 2 font stylesheet loads from Google Fonts |
-| Audit | `activity_log` records sign-in, publish, duplicate, archive, assign, enroll, role change, video completed, attempt start and submit, export |
+| Audit | `activity_log` records sign-in, publish, duplicate, archive, assign, enroll, role change, video completed, level quiz tries, attempt start and submit, export |
 
 ---
 
@@ -664,8 +665,8 @@ Decided 16 Nov 2026: courses work like a Duolingo path.
 ├── web/                          # React + Vite frontend
 │   └── src/
 │       ├── pages/
-│       │   ├── learner/          # SignIn, Dashboard, Course, Video, Assessment
-│       │   └── admin/            # Courses, CourseEditor, Assign, Tracking, Reports, Users
+│       │   ├── learner/          # SignIn, Dashboard, Catalog, CoursePage (level path), VideoPage, LevelQuizPage, AssessmentPage (final test)
+│       │   └── admin/            # AdminHome, CourseEditor (levels), QuestionListEditor, ImportQuestions + parseImport.ts, CourseResults, EnrollmentReport, Users
 │       ├── api/                  # learnerApi.ts, adminApi.ts (fetch wrappers)
 │       ├── components/           # AppShell (top bar + teal nav), ui.tsx (Card, StatTile, EmptyState, Badge, Logo), Icon, VideoPlayer, ...
 │       └── lib/                  # session (who is signed in), helpers
@@ -676,10 +677,10 @@ Decided 16 Nov 2026: courses work like a Duolingo path.
 │   ├── auth/                     # signin, callback, signout
 │   ├── learner/
 │   │   ├── index.ts              # signed-in check, then routes to a handler
-│   │   └── routes/               # courses, videos, attempts
+│   │   └── routes/               # me, courses, videos, levels (level quizzes), attempts (final test)
 │   ├── admin/
 │   │   ├── index.ts              # admin check, then routes to a handler
-│   │   └── routes/               # courses, videos, questions, assign, users, reports
+│   │   └── routes/               # courses (incl. PUT content), videos, tracking (assign, results, reports, export), users
 │   ├── dev.ts                    # local API server (Node), used by npm run dev:api
 │   └── lib/                      # config.ts, db.ts, email.ts, identity.ts, origin.ts, users.ts, workos.ts, youtube.ts, csv.ts, activity.ts, http.ts
 ├── .github/workflows/ci.yml      # CI on every push to main: typecheck, lint, build, migrations + RLS check, repo rules
@@ -721,9 +722,11 @@ Everyone works across all modules; anyone can pick up any step.
 | 7 | Assessment: unlock, start, autosave, submit, score. **Done 5 Nov 2026 (C4)** | 6 |
 | 8 | Admin: assign, tracking, reports, stats, export, users; indexes for the four unindexed foreign keys. **Done 5 Nov 2026 (C5)** | 5, 7 |
 | 9 | WorkOS sign-in (section 4.3): `server/auth/` routes, WorkOS version of `getCurrentUser()`, sign-in page. Built and tested with the Staging keys now in Vercel. **Done 5 Nov 2026 (C6); checked on production 6 Nov 2026** | WorkOS account (done), redirect URI set |
-| 10 | Course content: Claude drafts 30 single-choice questions from the *Email Etiquette* transcript, each with the timestamp it comes from; the team approves; an admin enters it in the builder (70% pass mark) | 5; video link and transcript |
+| 10 | Course content: replaced by step L5 (16 Nov 2026). The 30 drafted *Email Etiquette* questions (6 Nov) feed Level 2's quiz and the final test of *Workplace Communication* | 5; video link and transcript |
 | 11 | Test round: 4–5 people run the whole journey on production | 5–10 |
-| 12 | Go-live: clear test data, turn `TEST_SIGNIN` off, switch WorkOS to Production keys, accept WorkOS's DPA and add a line to an internal notice, RLS checklist and edge cases (section 11), then the pilot with 60–80 people | 11 |
+| 12 | Go-live: keep the database from pausing (Supabase Pro or a daily keep-alive request), clear test data, turn `TEST_SIGNIN` off, switch WorkOS to Production keys, accept WorkOS's DPA and add a line to an internal notice, RLS checklist and edge cases (section 11), then the pilot with 60–80 people | 11 |
+
+**Status (16 Nov 2026):** levels are done and on production (steps L1 to L4). Migration `20261116100000_levels_and_level_quizzes.sql` is applied; the two existing courses each became a single "Level 1" and work as before. A regression pass the same day (fresh database: all migrations, RLS check and function tests; the old single-level learner, final test and admin flows; WorkOS sign-in against a stand-in; the level flow; every page on desktop and phone; production server errors and data consistency) found nothing broken. Found on the way: **the free Supabase plan pauses the database after about a week without activity**, which took production offline from roughly 6 to 16 Nov; it was restored with no data lost. Open decision before the pilot: Supabase Pro, or a daily automated request that keeps the project awake. Next: L5 (course content).
 
 **Execution plan, levels (decided 16 Nov 2026; section 9.8)**
 
@@ -754,6 +757,8 @@ Claude builds steps 5–9 one after another (decision, 4 Nov 2026). Timeline: as
 - Employee CSV upload
 - Other video hosts (Vimeo, uploaded video), documents and slides as lessons, questions inside videos
 - Courses without an assessment, certificates
+- Points (XP), daily streaks and badges on top of the level path
+- A first-try score per level-quiz question in the stats (today: tries and first-try passes per level)
 - Text-answer questions, question shuffling and pools
 - Manager views of team results
 
