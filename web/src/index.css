@@ -591,3 +591,44 @@ textarea.input { min-height: 80px; resize: vertical; }
 .answer-options li.is-correct { background: #e6f5ec; }
 .answer-options li.is-picked:not(.is-correct) { background: #fdeaea; }
 .correct-mark { color: var(--ok); font-weight: 600; }
+
+/* Level path (architecture.md 9.8) */
+.level-path { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
+.level-node { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: var(--space-3); align-items: start; }
+.level-node::before {
+  content: '';
+  position: absolute;
+  left: 21px;
+  top: 44px;
+  bottom: calc(-1 * var(--space-4));
+  width: 2px;
+  background: var(--border);
+}
+.level-node:last-child::before { display: none; }
+.level-node.is-passed::before { background: var(--ok); }
+.level-marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: var(--brand-ink);
+  font-size: 1.05rem;
+}
+.level-node.is-open .level-marker { border-color: var(--brand); box-shadow: 0 0 0 4px rgba(42, 147, 168, 0.15); }
+.level-node.is-passed .level-marker { border-color: var(--ok); background: var(--ok); color: #fff; }
+.level-node.is-final .level-marker { border-color: var(--brand-ink); }
+.level-node.is-locked > .card, .level-node.is-locked .level-marker { opacity: 0.65; }
+.level-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-2); }
+.level-kicker { font-size: 0.85rem; font-weight: 600; }
+.level-title { margin: 0; font-size: 1.15rem; }
+.quiz-row { border-top: 1px dashed var(--border); }
+
+.quiz-result { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.quiz-result.is-passed .stat-value { color: var(--ok); }
+.question.is-wrong .option.is-selected { border-color: var(--danger); background: #fdeaea; }
+.question.is-right .option.is-selected { border-color: var(--ok); background: #e6f5ec; }

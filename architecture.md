@@ -463,13 +463,15 @@ One Hono app (`server/app.ts`), run on Vercel through a single entry file, `api/
 | Method & path | Purpose |
 |---|---|
 | `GET /me` | The signed-in user: name, email, role |
-| `GET /courses` | Published courses, plus courses I'm enrolled in that were later archived (I keep my results), each with my enrollment state, videos completed, overall watch progress and my score if completed. First submits any of my open attempts that are past their due date |
+| `GET /courses` | Published courses, plus courses I'm enrolled in that were later archived (I keep my results), each with my enrollment state, videos completed, levels passed of the total, overall watch progress and my score if completed. First submits any of my open attempts that are past their due date |
 | `POST /courses/:id/enroll` | Enroll myself in a published course that isn't past its due date. Idempotent. An unpublished course I'm not in answers 404 |
-| `GET /courses/:id` | A published course (or one I'm enrolled in): videos in order with my progress, lock state and resume position; assessment state (not enrolled / locked / available / in progress / completed / closed) and my score. Anything else answers 404 |
+| `GET /courses/:id` | A published course (or one I'm enrolled in): videos in order with my progress, lock state, resume position and level; levels in order with whether each is unlocked and passed and its quiz (question count, unlocked, passed, tries); final test state (not enrolled / locked / available / in progress / completed / closed) and my score. Anything else answers 404 |
 | `POST /videos/:id/progress` | Body: `{ segments: int[], position: int }`. Records watched segments (section 9.1). Returns my progress for that video |
 | `POST /videos/:id/error` | Body: `{ code: int }`. The player couldn't play this video; logs `video.unavailable` with the YouTube error code (section 9.1) |
-| `POST /courses/:id/attempt` | Start the assessment, or return the open attempt. Refused unless every video is complete and attempts remain |
-| `GET /attempts/:id` | Questions and options (**no correct answers**) and my saved answers |
+| `GET /levels/:id/quiz` | A level quiz I can take (earlier levels passed, this level's videos complete): questions and options (**no correct answers**), my tries so far, whether I've passed, and the next level |
+| `POST /levels/:id/quiz` | Body: `{ answers: [{ question_id, selected_option_ids[] }] }`. One try (section 9.8). Returns `{ correct_count, question_count, score_pct, passed, wrong_question_ids }`, never the correct option |
+| `POST /courses/:id/attempt` | Start the final test, or return the open attempt. Refused unless every video is complete, every level is passed and attempts remain |
+| `GET /attempts/:id` | Final-test questions and options (**no correct answers**) and my saved answers |
 | `PUT /attempts/:id/answers` | Body: `{ question_id, selected_option_ids[] }`. Upserts one answer. Refused once the attempt is submitted or past the due date, if an option isn't from that question, or if a single-choice question gets more than one option |
 | `POST /attempts/:id/submit` | Body: all answers (final snapshot). Scores and returns `{ score_pct }` only |
 
@@ -505,11 +507,12 @@ Every route checks that the course, video or attempt belongs to an enrollment of
 | Route | Screen |
 |---|---|
 | `/signin` | "Sign in with your company email" button (goes to `/api/auth/signin`); on previews, test sign-in instead. Shows "Use your company email" after a refused domain |
-| `/` | Dashboard: my courses (progress, score) |
+| `/` | Dashboard: my courses (level reached, progress, score) |
 | `/courses` | Course catalog: published courses, enroll |
-| `/courses/:id` | Course page: video list with progress and locks, the assessment card |
-| `/courses/:id/videos/:videoId` | Video player with progress bar ("Watched 64% — 80% unlocks the next step") |
-| `/courses/:id/assessment` | Questions with autosave, submit confirmation, score |
+| `/courses/:id` | Course page: the level path, with each level's videos and quiz, locks and progress, then the final test. A course with one level and no level quiz shows a plain video list |
+| `/courses/:id/videos/:videoId` | Video player with progress bar ("Watched 64% — 80% unlocks the next step"); after a level's last video it points to the level quiz |
+| `/courses/:id/levels/:levelId/quiz` | Level quiz: answer every question, check, see the score and which questions were wrong; Try again reshuffles the questions and options; all correct unlocks the next level |
+| `/courses/:id/assessment` | Final test: questions with autosave, submit confirmation, score |
 | `/admin` | Courses: list with counts, new course |
 | `/admin/courses/:id` | Course editor: details, videos, questions, publish, duplicate, archive, pass mark |
 | `/admin/courses/:id/results` | Stats, assign by email, everyone's progress, score and pass/fail, % correct per question, CSV download |
@@ -725,9 +728,9 @@ Everyone works across all modules; anyone can pick up any step.
 
 | # | Step | Depends on |
 |---|---|---|
-| L1 | Database: `levels`, `level_quiz_attempts`, `submit_level_quiz`, the level rules in the video, start and submit functions, function tests; existing courses get "Level 1"; the course builder keeps working (new videos go into the first level) | 4 |
-| L2 | Learner API: levels on the course page, `GET`/`POST /levels/:id/quiz` | L1 |
-| L3 | Learner UI: the level path on the course page, the level quiz page | L2 |
+| L1 | **Done 16 Nov 2026 (applied on Supabase).** Database: `levels`, `level_quiz_attempts`, `submit_level_quiz`, the level rules in the video, start and submit functions, function tests; existing courses get "Level 1"; the course builder keeps working (new videos go into the first level) | 4 |
+| L2 | Learner API: levels on the course page, `GET`/`POST /levels/:id/quiz`. **Done 16 Nov 2026** | L1 |
+| L3 | Learner UI: the level path on the course page, the level quiz page. **Done 16 Nov 2026** | L2 |
 | L4 | Admin: levels in the course builder (videos and questions per level, final test), level columns in results, reports and export | L1 |
 | L5 | Course content: *Workplace Communication* outline (5 levels, 6 videos), level quizzes and final test drafted from the transcripts, approved by the team | L4; transcripts |
 

@@ -24,6 +24,8 @@ export type CourseListItem = {
     videos_completed: number
     started: boolean
     progress_pct: number
+    levels_total: number
+    levels_passed: number
   }
 }
 
@@ -39,6 +41,7 @@ export type CoursePage = {
   enrollment: null | { status: EnrollmentStatus; score_pct: number | null; completed_at: string | null }
   videos: {
     id: string
+    level_id: string
     position: number
     title: string
     youtube_video_id: string
@@ -48,7 +51,19 @@ export type CoursePage = {
     locked: boolean
     resume_position_seconds: number
   }[]
+  levels: CourseLevel[]
   assessment: { state: AssessmentState; question_count: number; attempt_id: string | null; score_pct: number | null }
+}
+
+// A level on the course path (architecture.md 9.8): its videos, then its quiz.
+export type CourseLevel = {
+  id: string
+  position: number
+  title: string
+  video_ids: string[]
+  unlocked: boolean
+  passed: boolean
+  quiz: { question_count: number; unlocked: boolean; passed: boolean; tries: number }
 }
 
 export const getHealth = () => apiRequest<Health>('/health')
@@ -107,3 +122,25 @@ export const saveAnswer = (id: string, answer: AnswerInput) =>
   apiRequest<{ ok: true }>(`/attempts/${id}/answers`, { method: 'PUT', body: JSON.stringify(answer) })
 export const submitAttempt = (id: string, answers: AnswerInput[]) =>
   apiRequest<{ score_pct: number }>(`/attempts/${id}/submit`, { method: 'POST', body: JSON.stringify({ answers }) })
+
+// Level quizzes: no answer key comes back, only which questions were wrong.
+export type LevelQuiz = {
+  level: { id: string; position: number; title: string }
+  course: { id: string; title: string }
+  next_level: { id: string; title: string } | null
+  questions: AttemptQuestion[]
+  tries: number
+  passed: boolean
+}
+
+export type LevelQuizResult = {
+  correct_count: number
+  question_count: number
+  score_pct: number
+  passed: boolean
+  wrong_question_ids: string[]
+}
+
+export const getLevelQuiz = (levelId: string) => apiRequest<LevelQuiz>(`/levels/${levelId}/quiz`)
+export const submitLevelQuiz = (levelId: string, answers: AnswerInput[]) =>
+  apiRequest<LevelQuizResult>(`/levels/${levelId}/quiz`, { method: 'POST', body: JSON.stringify({ answers }) })

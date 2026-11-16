@@ -54,7 +54,10 @@ function Dashboard() {
                     <p className="course-card-meta">Your score: <strong>{e.score_pct}%</strong></p>
                   ) : (
                     <>
-                      <p className="course-card-meta">{e.videos_completed} of {c.video_count} videos watched · {e.progress_pct}%</p>
+                      <p className="course-card-meta">
+                        {e.levels_total > 1 ? `Level ${Math.min(e.levels_passed + 1, e.levels_total)} of ${e.levels_total} · ` : ''}
+                        {e.videos_completed} of {c.video_count} videos watched · {e.progress_pct}%
+                      </p>
                       <ProgressBar value={e.progress_pct} label={`${c.title} progress`} />
                     </>
                   )}

@@ -35,6 +35,8 @@ courses.get('/courses', async (c) => {
         'score_pct', e.best_score_pct::float8,
         'videos_completed', (select count(*) from video_progress p where p.enrollment_id = e.id and p.completed_at is not null),
         'started', exists (select 1 from video_progress p where p.enrollment_id = e.id and p.watched_segments > 0),
+        'levels_total', (select count(*) from levels l where l.course_id = c.id),
+        'levels_passed', (select count(*) from levels l where l.course_id = c.id and level_passed(e.id, l.id)),
         -- Share of all 5-second segments watched across the course's videos.
         'progress_pct', (select coalesce(round(100.0 * sum(coalesce(p.watched_segments, 0)) / nullif(sum(ceil(v.duration_seconds / 5.0)), 0)), 0)::int
                          from videos v left join video_progress p on p.video_id = v.id and p.enrollment_id = e.id
@@ -86,23 +88,44 @@ async function coursePage(courseId: string, userId: string) {
   // Not published and not mine: behave as if it doesn't exist.
   if (!course || (course.status !== 'published' && !enrollment)) throw new HttpError(404, 'not_found')
 
+  // Levels in order, with my quiz record (section 9.8). A level with no quiz
+  // questions counts as passed.
+  const levelRows = await sql()<{ id: string; position: number; title: string; question_count: number; tries: number; quiz_passed: boolean }[]>`
+    select l.id, l.position, l.title,
+      (select count(*) from questions q where q.level_id = l.id)::int as question_count,
+      (select count(*) from level_quiz_attempts a where a.level_id = l.id and a.enrollment_id = ${enrollment?.id ?? null})::int as tries,
+      exists (select 1 from level_quiz_attempts a
+              where a.level_id = l.id and a.enrollment_id = ${enrollment?.id ?? null} and a.passed) as quiz_passed
+    from levels l where l.course_id = ${courseId} order by l.position`
+
   const videoRows = await sql()<{
-    id: string; position: number; title: string; youtube_video_id: string; duration_seconds: number
+    id: string; level_id: string; position: number; title: string; youtube_video_id: string; duration_seconds: number
     watched_segments: number | null; completed: boolean; last_position_seconds: number | null
   }[]>`
-    select v.id, v.position, v.title, v.youtube_video_id, v.duration_seconds,
+    select v.id, v.level_id, v.position, v.title, v.youtube_video_id, v.duration_seconds,
            p.watched_segments, p.completed_at is not null as completed, p.last_position_seconds
     from videos v
     left join video_progress p on p.video_id = v.id and p.enrollment_id = ${enrollment?.id ?? null}
     where v.course_id = ${courseId} order by v.position`
 
+  // A level is open when every earlier level is passed; inside it, a video is
+  // open when every earlier video is complete (same rules as the database).
+  const levelOpen = new Map<string, boolean>()
+  let earlierPassed = true
+  for (const l of levelRows) {
+    levelOpen.set(l.id, earlierPassed)
+    earlierPassed = earlierPassed && (l.question_count === 0 || l.quiz_passed)
+  }
+  const allLevelsPassed = earlierPassed
+
   let previousDone = true
   const videos = videoRows.map((v) => {
     const totalSegments = Math.ceil(v.duration_seconds / 5)
-    const locked = !enrollment || !previousDone
+    const locked = !enrollment || !previousDone || !levelOpen.get(v.level_id)
     previousDone = previousDone && v.completed
     return {
       id: v.id,
+      level_id: v.level_id,
       position: v.position,
       title: v.title,
       youtube_video_id: v.youtube_video_id,
@@ -115,6 +138,26 @@ async function coursePage(courseId: string, userId: string) {
   })
   const allVideosDone = videos.every((v) => v.completed)
 
+  const levels = levelRows.map((l) => {
+    const levelVideos = videos.filter((v) => v.level_id === l.id)
+    const open = Boolean(enrollment) && Boolean(levelOpen.get(l.id))
+    const passed = l.question_count === 0 || l.quiz_passed
+    return {
+      id: l.id,
+      position: l.position,
+      title: l.title,
+      video_ids: levelVideos.map((v) => v.id),
+      unlocked: open,
+      passed: Boolean(enrollment) && passed,
+      quiz: {
+        question_count: l.question_count,
+        unlocked: open && l.question_count > 0 && levelVideos.every((v) => v.completed),
+        passed: l.quiz_passed,
+        tries: l.tries,
+      },
+    }
+  })
+
   const [{ question_count }] = await sql()<{ question_count: number }[]>`
     select count(*)::int as question_count from questions where course_id = ${courseId} and level_id is null`
   const [openAttempt] = enrollment
@@ -126,7 +169,7 @@ async function coursePage(courseId: string, userId: string) {
   else if (openAttempt) state = 'in_progress'
   else if (enrollment.status === 'completed') state = 'completed'
   else if (course.past_due || course.status !== 'published' || enrollment.attempts_used >= course.max_attempts) state = 'closed'
-  else if (!allVideosDone) state = 'locked'
+  else if (!allVideosDone || !allLevelsPassed) state = 'locked'
   else state = 'available'
 
   return {
@@ -140,6 +183,7 @@ async function coursePage(courseId: string, userId: string) {
       ? { status: enrollment.status, score_pct: enrollment.best_score_pct, completed_at: enrollment.completed_at }
       : null,
     videos,
+    levels,
     assessment: {
       state,
       question_count,

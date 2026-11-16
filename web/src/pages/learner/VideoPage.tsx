@@ -54,22 +54,39 @@ function VideoPage() {
     )
   }
 
+  // What comes after this video: the level quiz when this is the level's last
+  // video and its quiz isn't passed yet, else the next video, else the test.
+  const level = course.levels.find((l) => l.video_ids.includes(video.id))
+  const hasPath = course.levels.length > 1 || course.levels.some((l) => l.quiz.question_count > 0)
   const next = course.videos[index + 1] ?? null
+  const quizNext = level && level.video_ids.at(-1) === video.id && level.quiz.question_count > 0 && !level.quiz.passed
+  const after: AfterAction = quizNext
+    ? { to: `/courses/${course.id}/levels/${level.id}/quiz`, label: 'Take the level quiz', note: 'This level\u2019s videos are done. Pass its quiz to unlock the next level.' }
+    : next
+      ? { to: `/courses/${course.id}/videos/${next.id}`, label: 'Next video', note: 'The next video is unlocked.' }
+      : { to: `/courses/${course.id}/assessment`, label: hasPath ? 'Go to the final test' : 'Go to the assessment', note: hasPath ? 'Pass every level to unlock the final test.' : 'Every video in this course needs to be watched to unlock the assessment.' }
+  const inLevel = level ? level.video_ids.indexOf(video.id) + 1 : 0
   return (
     <div className="stack">
       <div>
         {back}
-        <h1 style={{ marginBottom: 0 }}>{video.position}. {video.title}</h1>
-        <p className="muted" style={{ margin: 0 }}>Video {video.position} of {course.videos.length}</p>
+        <h1 style={{ marginBottom: 0 }}>{video.title}</h1>
+        <p className="muted" style={{ margin: 0 }}>
+          {hasPath && level
+            ? `Level ${level.position}: ${level.title} · video ${inLevel} of ${level.video_ids.length}`
+            : `Video ${video.position} of ${course.videos.length}`}
+        </p>
       </div>
       {course.past_due && <div className="alert alert-info">{REFUSALS.past_due}</div>}
       {course.status === 'archived' && <div className="alert alert-info">{REFUSALS.course_not_open}</div>}
-      <Player key={video.id} courseId={course.id} video={video} next={next} tracking={course.status === 'published' && !course.past_due} />
+      <Player key={video.id} video={video} after={after} tracking={course.status === 'published' && !course.past_due} />
     </div>
   )
 }
 
-function Player({ courseId, video, next, tracking }: { courseId: string; video: CourseVideo; next: CourseVideo | null; tracking: boolean }) {
+type AfterAction = { to: string; label: string; note: string }
+
+function Player({ video, after, tracking }: { video: CourseVideo; after: AfterAction; tracking: boolean }) {
   const frameRef = useRef<HTMLDivElement>(null)
   const [pct, setPct] = useState(video.watched_pct)
   const [completed, setCompleted] = useState(video.completed)
@@ -212,13 +229,11 @@ function Player({ courseId, video, next, tracking }: { courseId: string; video: 
             <ProgressBar value={pct} label={`${video.title} watched`} />
             <p className="muted" style={{ margin: 'var(--space-2) 0 0' }}>
               {completed
-                ? next ? 'The next video is unlocked.' : 'Every video in this course needs to be watched to unlock the assessment.'
+                ? after.note
                 : 'Watching 80% of the video completes it. Skipped parts and playback in a hidden tab are not counted.'}
             </p>
           </div>
-          {completed && (next
-            ? <Link className="button button-primary" to={`/courses/${courseId}/videos/${next.id}`}>Next video</Link>
-            : <Link className="button button-primary" to={`/courses/${courseId}/assessment`}>Go to the assessment</Link>)}
+          {completed && <Link className="button button-primary" to={after.to}>{after.label}</Link>}
         </div>
       </Card>
     </div>

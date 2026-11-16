@@ -9,6 +9,7 @@ import Users from './pages/admin/Users.tsx'
 import Catalog from './pages/learner/Catalog.tsx'
 import CoursePage from './pages/learner/CoursePage.tsx'
 import Dashboard from './pages/learner/Dashboard.tsx'
+import LevelQuizPage from './pages/learner/LevelQuizPage.tsx'
 import SignIn from './pages/learner/SignIn.tsx'
 import VideoPage from './pages/learner/VideoPage.tsx'
 import NotFound from './pages/NotFound.tsx'
@@ -23,6 +24,7 @@ function App() {
         <Route path="/courses/:id" element={<CoursePage />} />
         <Route path="/courses/:id/videos/:videoId" element={<VideoPage />} />
         <Route path="/courses/:id/assessment" element={<AssessmentPage />} />
+        <Route path="/courses/:id/levels/:levelId/quiz" element={<LevelQuizPage />} />
         <Route path="/admin" element={<AdminOnly><AdminHome /></AdminOnly>} />
         <Route path="/admin/courses/:id" element={<AdminOnly><CourseEditor /></AdminOnly>} />
         <Route path="/admin/courses/:id/results" element={<AdminOnly><CourseResults /></AdminOnly>} />

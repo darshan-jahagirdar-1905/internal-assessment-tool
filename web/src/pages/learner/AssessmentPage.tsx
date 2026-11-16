@@ -61,7 +61,12 @@ function AssessmentPage() {
     } else if (a.state === 'not_enrolled') {
       setView({ kind: 'message', course, title: 'Not enrolled', text: 'Enroll in this course and watch its videos to unlock the assessment.' })
     } else if (a.state === 'locked') {
-      setView({ kind: 'message', course, title: 'Assessment locked', text: "It unlocks when you've watched every video (at least 80% of each)." })
+      setView({
+        kind: 'message', course, title: 'Locked',
+        text: course.levels.some((l) => l.quiz.question_count > 0)
+          ? "The final test unlocks when you've passed every level."
+          : "It unlocks when you've watched every video (at least 80% of each).",
+      })
     } else {
       setView({ kind: 'message', course, title: 'Assessment closed', text: 'This assessment is no longer open.' })
     }

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { requireUser, type AppEnv } from '../lib/identity.js'
 import { attempts } from './routes/attempts.js'
 import { courses } from './routes/courses.js'
+import { levels } from './routes/levels.js'
 import { me } from './routes/me.js'
 import { videos } from './routes/videos.js'
 
@@ -12,3 +13,4 @@ learner.route('/', me)
 learner.route('/', courses)
 learner.route('/', videos)
 learner.route('/', attempts)
+learner.route('/', levels)

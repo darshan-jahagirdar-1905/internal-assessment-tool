@@ -6,6 +6,7 @@ Every change to this repo gets one row here, newest first, in the same commit as
 
 | Date | Who | Area | What changed |
 |---|---|---|---|
+| 2026-11-16 | Darshan | take-ui | Learners now see a course as a path of levels: each level's videos, then a level quiz they must get fully right (score and which questions were wrong shown, never the right option; unlimited tries, reshuffled each time) to unlock the next level, then the final test; the dashboard shows the level reached. The API serves the level quizzes without answers, and AGENTS.md rule 6 now allows this one exception. Next: levels in the admin course builder and results |
 | 2026-11-16 | Darshan | db | Courses can now be split into levels: each level has its videos and a quiz that must be answered 100% correctly (unlimited tries) before the next level unlocks, and only the final test is scored. Existing courses became a single "Level 1" and work as before; the course builder puts new videos into the first level. Next: learner API and screens for levels |
 | 2026-11-06 | Darshan | docs | WorkOS sign-in passed its check on production (company email signs in, Gmail refused, sign-out works, code email lands in the inbox); the WorkOS Staging settings are now recorded in architecture. Phase C is done. Next: D1, drafting the course questions |
 | 2026-11-06 | Darshan | setup | Updated Hono to 4.13.13 and the local dev server to 2.1.5, clearing npm audit's Hono security warnings; no change to how the site works. Known issue: npm audit still flags Zod (needs the Zod 4 upgrade) and a lint-only package |
