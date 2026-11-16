@@ -62,6 +62,28 @@ function EnrollmentReport() {
         </ol>
       </Card>
 
+      {report.levels.some((l) => l.question_count > 0) && (
+        <Card title="Level quizzes">
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Level</th><th>Tries</th><th>First try</th><th>Result</th></tr></thead>
+              <tbody>
+                {report.levels.map((l) => (
+                  <tr key={l.id}>
+                    <td>{l.position}. {l.title}</td>
+                    <td>{l.question_count === 0 ? '—' : l.tries}</td>
+                    <td>{l.first_try_correct === null ? '—' : `${l.first_try_correct} of ${l.question_count}`}</td>
+                    <td>{l.question_count === 0 ? <span className="muted">No quiz</span>
+                      : l.passed ? <Badge tone="ok">Passed {formatDateTime(l.passed_at)}</Badge>
+                      : l.tries > 0 ? <Badge tone="warn">Not yet</Badge> : <span className="muted">Not tried</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       {attempts.length === 0 && <Card title="Assessment"><p className="muted" style={{ margin: 0 }}>Not started.</p></Card>}
       {attempts.map((a) => (
         <Card key={a.id} title={`Assessment · attempt ${a.attempt_no}`}>

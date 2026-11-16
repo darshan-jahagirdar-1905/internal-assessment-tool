@@ -35,8 +35,15 @@ export type Course = {
   published_at: string | null
   created_at: string
   videos: Video[]
+  levels: CourseLevel[]
+  /** The final test: questions with no level. */
   questions: Question[]
 }
+
+// A level of the course path (architecture.md 9.8): its videos and quiz questions.
+export type CourseLevel = { id?: string; position?: number; title: string; videos: Video[]; questions: Question[] }
+
+export type CourseContent = { levels: CourseLevel[]; final_questions: Question[] }
 
 export type CourseDetails = { title: string; description: string | null; pass_percentage: number; due_at: string | null }
 export type VideoCheck =
@@ -58,6 +65,18 @@ export const saveQuestions = (id: string, questions: Question[]) =>
     questions: questions.map(({ text, type, points, options }) => ({
       text, type, points, options: options.map(({ text, is_correct }) => ({ text, is_correct })),
     })),
+  }))
+const questionBody = ({ text, type, points, options }: Question) => ({
+  text, type, points, options: options.map(({ text, is_correct }) => ({ text, is_correct })),
+})
+export const saveContent = (id: string, content: CourseContent) =>
+  adminRequest<Course>(`/courses/${id}/content`, json('PUT', {
+    levels: content.levels.map((l) => ({
+      title: l.title,
+      videos: l.videos.map(({ title, youtube_video_id, duration_seconds }) => ({ title, youtube_video_id, duration_seconds })),
+      questions: l.questions.map(questionBody),
+    })),
+    final_questions: content.final_questions.map(questionBody),
   }))
 export const publishCourse = (id: string) => adminRequest<Course>(`/courses/${id}/publish`, { method: 'POST' })
 export const duplicateCourse = (id: string) => adminRequest<Course>(`/courses/${id}/duplicate`, { method: 'POST' })
@@ -86,6 +105,8 @@ export type TrackingRow = {
   status: EnrollmentStatus
   completed_at: string | null
   videos_completed: number
+  levels_passed: number
+  levels_total: number
   progress_pct: number
   score_pct: number | null
   passed: boolean | null
@@ -93,6 +114,7 @@ export type TrackingRow = {
 
 export type CourseStats = {
   course: CourseHead
+  levels: { position: number; title: string; question_count: number; passed: number; tried: number; passed_first_try: number; avg_tries_to_pass: number | null }[]
   enrolled: number
   videos_done: number
   completed: number
@@ -115,6 +137,10 @@ export type EnrollmentReport = {
     id: string; position: number; title: string; duration_seconds: number
     watched_segments: number; total_segments: number; watched_pct: number
     completed_at: string | null; last_reported_at: string | null
+  }[]
+  levels: {
+    id: string; position: number; title: string; question_count: number
+    tries: number; passed: boolean | null; passed_at: string | null; first_try_correct: number | null
   }[]
   attempts: {
     id: string; attempt_no: number; status: 'in_progress' | 'submitted'; submit_reason: 'learner' | 'due_date' | null

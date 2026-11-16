@@ -21,7 +21,7 @@ async function courseHead(id: string): Promise<CourseHead> {
     select c.id, c.title, c.status, c.pass_percentage,
       (c.due_at is not null and now() > c.due_at) as past_due,
       (select count(*) from videos v where v.course_id = c.id)::int as video_count,
-      (select count(*) from questions q where q.course_id = c.id)::int as question_count
+      (select count(*) from questions q where q.course_id = c.id and q.level_id is null)::int as question_count
     from courses c where c.id = ${id}`
   if (!course) throw new HttpError(404, 'not_found')
   return course
@@ -43,6 +43,8 @@ type TrackingRow = {
   status: string
   completed_at: Date | null
   videos_completed: number
+  levels_passed: number
+  levels_total: number
   progress_pct: number
   score_pct: number | null
   passed: boolean | null
@@ -55,6 +57,8 @@ async function trackingRows(courseId: string): Promise<TrackingRow[]> {
     select e.id, u.email, u.full_name, u.employee_code, u.first_signed_in_at is not null as signed_in,
       e.source, e.created_at as enrolled_at, e.status, e.completed_at,
       (select count(*) from video_progress p where p.enrollment_id = e.id and p.completed_at is not null)::int as videos_completed,
+      (select count(*) from levels l where l.course_id = e.course_id and level_passed(e.id, l.id))::int as levels_passed,
+      (select count(*) from levels l where l.course_id = e.course_id)::int as levels_total,
       (select coalesce(round(100.0 * sum(coalesce(p.watched_segments, 0)) / nullif(sum(ceil(v.duration_seconds / 5.0)), 0)), 0)::int
        from videos v left join video_progress p on p.video_id = v.id and p.enrollment_id = e.id
        where v.course_id = e.course_id) as progress_pct,
@@ -135,11 +139,24 @@ tracking.get('/courses/:id/stats', async (c) => {
     from questions q
     left join answers a on a.question_id = q.id
       and exists (select 1 from attempts t where t.id = a.attempt_id and t.status = 'submitted')
-    where q.course_id = ${courseId}
+    where q.course_id = ${courseId} and q.level_id is null
     group by q.id
     order by q.position`
+  // Level quizzes (section 9.8): how many passed, tries taken, first-try passes.
+  const levelStats = await sql()`
+    select l.position, l.title,
+      (select count(*) from questions q where q.level_id = l.id)::int as question_count,
+      count(distinct a.enrollment_id) filter (where a.passed)::int as passed,
+      count(distinct a.enrollment_id)::int as tried,
+      count(distinct a.enrollment_id) filter (where a.passed and a.attempt_no = 1)::int as passed_first_try,
+      round(avg(a.attempt_no) filter (where a.passed), 1)::float8 as avg_tries_to_pass
+    from levels l
+    left join level_quiz_attempts a on a.level_id = l.id
+    where l.course_id = ${courseId}
+    group by l.id order by l.position`
   return c.json({
     course,
+    levels: levelStats,
     enrolled: rows.length,
     videos_done: rows.filter((r) => r.status !== 'enrolled').length,
     completed: completed.length,
@@ -184,11 +201,23 @@ tracking.get('/enrollments/:id/report', async (c) => {
             from options o where o.question_id = q.id)
         ) order by q.position), '[]'::json)
        from questions q left join answers ans on ans.question_id = q.id and ans.attempt_id = a.id
-       where q.course_id = ${head.course_id}) as answers
+       where q.course_id = ${head.course_id} and q.level_id is null) as answers
     from attempts a where a.enrollment_id = ${enrollmentId}
     order by a.attempt_no`
 
-  return c.json({ course, enrollment: row, videos, attempts })
+  const levels = await sql()`
+    select l.id, l.position, l.title,
+      (select count(*) from questions q where q.level_id = l.id)::int as question_count,
+      count(a.id)::int as tries,
+      bool_or(a.passed) as passed,
+      min(a.submitted_at) filter (where a.passed) as passed_at,
+      (array_agg(a.correct_count order by a.attempt_no))[1] as first_try_correct
+    from levels l
+    left join level_quiz_attempts a on a.level_id = l.id and a.enrollment_id = ${enrollmentId}
+    where l.course_id = ${head.course_id}
+    group by l.id order by l.position`
+
+  return c.json({ course, enrollment: row, videos, levels, attempts })
 })
 
 tracking.get('/courses/:id/export', async (c) => {
@@ -197,10 +226,10 @@ tracking.get('/courses/:id/export', async (c) => {
   const course = await courseHead(courseId)
   const rows = await trackingRows(courseId)
   const csv = toCsv(
-    ['Name', 'Email', 'Employee code', 'Source', 'Enrolled at (IST)', 'Videos completed', 'Status', 'Score %', 'Passed', 'Completed at (IST)'],
+    ['Name', 'Email', 'Employee code', 'Source', 'Enrolled at (IST)', 'Videos completed', 'Levels passed', 'Status', 'Score %', 'Passed', 'Completed at (IST)'],
     rows.map((r) => [
       r.full_name, r.email, r.employee_code, r.source, istDateTime(r.enrolled_at),
-      `${r.videos_completed} of ${course.video_count}`, r.status, r.score_pct,
+      `${r.videos_completed} of ${course.video_count}`, `${r.levels_passed} of ${r.levels_total}`, r.status, r.score_pct,
       r.passed === null ? '' : r.passed ? 'Yes' : 'No', istDateTime(r.completed_at),
     ]),
   )

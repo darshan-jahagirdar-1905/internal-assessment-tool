@@ -103,6 +103,7 @@ function CourseResults() {
                   <tr>
                     <th>Person</th>
                     <th>Source</th>
+                    {stats.levels.length > 1 && <th>Levels</th>}
                     <th>Videos</th>
                     <th>Status</th>
                     <th>Score</th>
@@ -122,6 +123,7 @@ function CourseResults() {
                           {!r.signed_in && <div className="muted">Hasn't signed in yet</div>}
                         </td>
                         <td>{r.source === 'admin' ? 'Assigned' : 'Self'}</td>
+                        {stats.levels.length > 1 && <td>{r.levels_passed} of {r.levels_total}</td>}
                         <td style={{ minWidth: 120 }}>
                           {r.videos_completed} of {course.video_count}
                           <ProgressBar value={r.progress_pct} label={`${r.email} watched`} />
@@ -141,7 +143,28 @@ function CourseResults() {
         )}
       </Card>
 
-      <Card title="Questions">
+      {stats.levels.some((l) => l.question_count > 0) && (
+        <Card title="Level quizzes">
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Level</th><th>Questions</th><th>Passed</th><th>Passed first try</th><th>Average tries to pass</th></tr></thead>
+              <tbody>
+                {stats.levels.map((l) => (
+                  <tr key={l.position}>
+                    <td>{l.position}. {l.title}</td>
+                    <td>{l.question_count}</td>
+                    <td>{l.passed} of {l.tried} who tried</td>
+                    <td>{l.passed_first_try}</td>
+                    <td>{l.avg_tries_to_pass ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      <Card title="Final test questions">
         {stats.questions.length === 0 ? <p className="muted" style={{ margin: 0 }}>No questions.</p> : (
           <div className="table-wrap">
             <table className="table">

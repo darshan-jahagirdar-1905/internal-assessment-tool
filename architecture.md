@@ -483,21 +483,22 @@ Every route checks that the course, video or attempt belongs to an enrollment of
 |---|---|
 | `GET /courses` | All courses with counts (enrolled, completed, average score) |
 | `POST /courses` | Create a draft |
-| `GET /courses/:id` | Course with videos, questions and options (including correct answers) |
+| `GET /courses/:id` | Course with its levels (each with its videos and quiz questions), all videos, and the final-test questions, with options (including correct answers) |
 | `PUT /courses/:id` | Update title, description, pass %, due date (draft only) |
 | `PUT /courses/:id/pass-mark` | Change the pass mark of a published course; pass/fail updates for everyone straight away; logged as `course.pass_mark_changed` |
 | `POST /videos/check` | Body: `{ url }`. Returns the YouTube id and title, and whether the video can be embedded |
-| `PUT /courses/:id/videos` | Replace the ordered video list, with each video's duration (draft only) |
-| `PUT /courses/:id/questions` | Replace all questions and options (draft only) |
-| `POST /courses/:id/publish` | Validate and lock. Needs ≥ 1 video, ≥ 1 question, every video still embeddable; single-choice has exactly 1 correct option, multiple-choice ≥ 1 |
-| `POST /courses/:id/duplicate` | Copy as a new draft (the only way to change a published course) |
+| `PUT /courses/:id/content` | Body: `{ levels: [{ title, videos[], questions[] }], final_questions[] }`. Replace the whole path in one transaction (draft only): levels in order, each level's videos (with durations) and quiz questions, and the final test. The course editor saves through this |
+| `PUT /courses/:id/videos` | Replace the ordered video list, with each video's duration, all in the first level (draft only; kept for courses without levels) |
+| `PUT /courses/:id/questions` | Replace the final-test questions and options (draft only) |
+| `POST /courses/:id/publish` | Validate and lock. Needs ≥ 1 video, every level ≥ 1 video, every level a quiz question when there are several levels, ≥ 1 final-test question, every video still embeddable; single-choice has exactly 1 correct option, multiple-choice ≥ 1 |
+| `POST /courses/:id/duplicate` | Copy as a new draft, levels included (the only way to change a published course) |
 | `POST /courses/:id/archive` | Hide from the course list; enrolled learners keep their results |
 | `POST /courses/:id/assign` | Body: `{ emails[] }` (up to 500). Published courses that aren't past their due date only. Creates missing users (allowed domains only) and enrollments with `source = 'admin'`. Returns `{ enrolled, already_enrolled, rejected[] }`, each rejected entry with its reason (not an email, or not a company domain) |
 | `GET /users` | Search and list users |
 | `PUT /users/:id/role` | Make a user an admin or a learner. An admin can't change their own role (so there is always at least one admin); logged as `user.role_changed` |
-| `GET /courses/:id/tracking` | Enrollments with person, source, video progress, status, score, pass/fail |
-| `GET /enrollments/:id/report` | Video progress and every attempt with every answer and correctness |
-| `GET /courses/:id/stats` | Enrolled, videos done, completed, pass rate, average score, % correct per question |
+| `GET /courses/:id/tracking` | Enrollments with person, source, levels passed, video progress, status, score, pass/fail |
+| `GET /enrollments/:id/report` | Video progress, each level quiz's tries, first-try result and date passed, and every final-test attempt with every answer and correctness |
+| `GET /courses/:id/stats` | Enrolled, videos done, completed, pass rate, average score, % correct per final-test question; per level quiz: how many passed, passed on the first try, average tries to pass |
 | `GET /courses/:id/export` | CSV of results (section 9.6) |
 
 ---
@@ -514,8 +515,8 @@ Every route checks that the course, video or attempt belongs to an enrollment of
 | `/courses/:id/levels/:levelId/quiz` | Level quiz: answer every question, check, see the score and which questions were wrong; Try again reshuffles the questions and options; all correct unlocks the next level |
 | `/courses/:id/assessment` | Final test: questions with autosave, submit confirmation, score |
 | `/admin` | Courses: list with counts, new course |
-| `/admin/courses/:id` | Course editor: details, videos, questions, publish, duplicate, archive, pass mark |
-| `/admin/courses/:id/results` | Stats, assign by email, everyone's progress, score and pass/fail, % correct per question, CSV download |
+| `/admin/courses/:id` | Course editor: details; levels (add, rename, reorder, remove), each with its videos and quiz questions; the final test; **Import questions** (paste questions in the review doc's format, preview, add to a level quiz or the final test); one Save for the whole path; publish, duplicate, archive, pass mark |
+| `/admin/courses/:id/results` | Stats, assign by email, everyone's levels passed, progress, score and pass/fail, level quiz results, % correct per final-test question, CSV download |
 | `/admin/enrollments/:id` | One person's report: video progress and every answer with its correctness |
 | `/admin/users` | Search users, make someone an admin or a learner |
 
@@ -583,7 +584,7 @@ Due dates are optional (none for the pilot). When set: after `due_at`, videos an
 
 ### 9.6 Export
 
-One row per enrollment: name, email, employee code, source, enrolled at, videos completed, status, score %, passed, completed at. Dates are India time (`YYYY-MM-DD HH:MM`). Any cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return is prefixed with `'`, so Excel won't treat it as a formula. The file starts with a UTF-8 byte-order mark so Excel reads names correctly.
+One row per enrollment: name, email, employee code, source, enrolled at, videos completed, levels passed, status, score %, passed, completed at. Dates are India time (`YYYY-MM-DD HH:MM`). Any cell starting with `=`, `+`, `-`, `@`, a tab or a carriage return is prefixed with `'`, so Excel won't treat it as a formula. The file starts with a UTF-8 byte-order mark so Excel reads names correctly.
 
 ### 9.7 Editing after publishing
 
@@ -731,7 +732,7 @@ Everyone works across all modules; anyone can pick up any step.
 | L1 | **Done 16 Nov 2026 (applied on Supabase).** Database: `levels`, `level_quiz_attempts`, `submit_level_quiz`, the level rules in the video, start and submit functions, function tests; existing courses get "Level 1"; the course builder keeps working (new videos go into the first level) | 4 |
 | L2 | Learner API: levels on the course page, `GET`/`POST /levels/:id/quiz`. **Done 16 Nov 2026** | L1 |
 | L3 | Learner UI: the level path on the course page, the level quiz page. **Done 16 Nov 2026** | L2 |
-| L4 | Admin: levels in the course builder (videos and questions per level, final test), level columns in results, reports and export | L1 |
+| L4 | Admin: levels in the course builder (videos and questions per level, final test), the question import box, level columns in results, reports and export. **Done 16 Nov 2026** | L1 |
 | L5 | Course content: *Workplace Communication* outline (5 levels, 6 videos), level quizzes and final test drafted from the transcripts, approved by the team | L4; transcripts |
 
 Claude builds steps 5–9 one after another (decision, 4 Nov 2026). Timeline: as soon as possible; no fixed dates.

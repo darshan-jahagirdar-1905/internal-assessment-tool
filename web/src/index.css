@@ -632,3 +632,8 @@ textarea.input { min-height: 80px; resize: vertical; }
 .quiz-result.is-passed .stat-value { color: var(--ok); }
 .question.is-wrong .option.is-selected { border-color: var(--danger); background: #fdeaea; }
 .question.is-right .option.is-selected { border-color: var(--ok); background: #e6f5ec; }
+
+/* Course editor: levels and the question import box */
+.editor-subhead { margin: var(--space-5) 0 var(--space-3); font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.import-box { width: 100%; padding: var(--space-4); border: 1px dashed var(--border); border-radius: var(--radius); background: #f8fafb; }
+.import-list { margin: 0; padding-left: 1.2rem; display: grid; gap: var(--space-1); max-height: 320px; overflow-y: auto; }
