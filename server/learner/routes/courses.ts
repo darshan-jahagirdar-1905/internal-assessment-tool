@@ -26,7 +26,7 @@ courses.get('/courses', async (c) => {
     select c.id, c.title, c.description, c.status, c.due_at,
       (select count(*) from videos v where v.course_id = c.id)::int as video_count,
       (select coalesce(sum(v.duration_seconds), 0) from videos v where v.course_id = c.id)::int as total_seconds,
-      (select count(*) from questions q where q.course_id = c.id)::int as question_count,
+      (select count(*) from questions q where q.course_id = c.id and q.level_id is null)::int as question_count,
       case when e.id is null then null else json_build_object(
         'status', e.status,
         'source', e.source,
@@ -116,7 +116,7 @@ async function coursePage(courseId: string, userId: string) {
   const allVideosDone = videos.every((v) => v.completed)
 
   const [{ question_count }] = await sql()<{ question_count: number }[]>`
-    select count(*)::int as question_count from questions where course_id = ${courseId}`
+    select count(*)::int as question_count from questions where course_id = ${courseId} and level_id is null`
   const [openAttempt] = enrollment
     ? await sql()<{ id: string }[]>`select id from attempts where enrollment_id = ${enrollment.id} and status = 'in_progress'`
     : []

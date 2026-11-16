@@ -74,7 +74,7 @@ attempts.get('/attempts/:id', async (c) => {
     select q.id, q.position, q.text, q.type,
       (select json_agg(json_build_object('id', o.id, 'text', o.text) order by o.position)
        from options o where o.question_id = q.id) as options
-    from questions q where q.course_id = ${attempt.course_id}
+    from questions q where q.course_id = ${attempt.course_id} and q.level_id is null
     order by q.position`
   const answers = await sql()`
     select question_id, selected_option_ids from answers where attempt_id = ${attemptId}`
@@ -125,7 +125,7 @@ attempts.post('/attempts/:id/submit', async (c) => {
   if (attempt.status === 'in_progress') await closeOverdue(attempt.course_id)
 
   const singles = await sql()<{ id: string }[]>`
-    select id from questions where course_id = ${attempt.course_id} and type = 'single'`
+    select id from questions where course_id = ${attempt.course_id} and level_id is null and type = 'single'`
   const singleIds = new Set(singles.map((q) => q.id))
   if (body.answers.some((a) => singleIds.has(a.question_id) && new Set(a.selected_option_ids).size > 1)) {
     throw new HttpError(422, 'single_choice')

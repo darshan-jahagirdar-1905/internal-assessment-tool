@@ -10,13 +10,17 @@ declare
   e_id uuid; e2_id uuid; a_id uuid; a2_id uuid;
   r record; s numeric; n int;
   failed boolean;
+  l1 uuid; c3_id uuid; l3a uuid; l3b uuid; v3a uuid; v3b uuid; e3_id uuid;
+  lq1 uuid; lq1r uuid; lq1w uuid; lq2 uuid; lq2r uuid; lq2w uuid; lq3 uuid; lq3r uuid; fq1 uuid; fq1r uuid;
 begin
   -- Setup: one learner, a published course (pass 60%), two 20-second videos
   -- (4 segments each), a single-choice and a multiple-choice question.
   insert into users (email) values ('learner@transfunnel.com') returning id into u_id;
   insert into courses (title, pass_percentage, status) values ('Test course', 60, 'published') returning id into c_id;
-  insert into videos (course_id, position, title, youtube_video_id, duration_seconds) values (c_id, 1, 'V1', 'aaa', 20) returning id into v1;
-  insert into videos (course_id, position, title, youtube_video_id, duration_seconds) values (c_id, 2, 'V2', 'bbb', 20) returning id into v2;
+  -- One level with no quiz questions: it counts as passed, like a course made before levels.
+  insert into levels (course_id, position, title) values (c_id, 1, 'Level 1') returning id into l1;
+  insert into videos (course_id, level_id, position, title, youtube_video_id, duration_seconds) values (c_id, l1, 1, 'V1', 'aaa', 20) returning id into v1;
+  insert into videos (course_id, level_id, position, title, youtube_video_id, duration_seconds) values (c_id, l1, 2, 'V2', 'bbb', 20) returning id into v2;
   insert into questions (course_id, position, text, type) values (c_id, 1, 'Single', 'single') returning id into q1;
   insert into options (question_id, position, text, is_correct) values (q1, 1, 'right', true) returning id into o1a;
   insert into options (question_id, position, text, is_correct) values (q1, 2, 'wrong', false) returning id into o1b;
@@ -148,9 +152,99 @@ begin
   exception when others then failed := sqlerrm in ('past_due', 'no_attempts_left'); end;
   assert failed, 'no attempt after the due date';
 
+
+  -- Third course: two levels, each with one 5-second video (1 segment) and a
+  -- quiz, plus one final-test question (architecture.md 9.8).
+  insert into courses (title, pass_percentage, status) values ('Levels course', 70, 'published') returning id into c3_id;
+  insert into levels (course_id, position, title) values (c3_id, 1, 'Speaking') returning id into l3a;
+  insert into levels (course_id, position, title) values (c3_id, 2, 'Email') returning id into l3b;
+  insert into videos (course_id, level_id, position, title, youtube_video_id, duration_seconds) values (c3_id, l3a, 1, 'VA', 'ccc', 5) returning id into v3a;
+  insert into videos (course_id, level_id, position, title, youtube_video_id, duration_seconds) values (c3_id, l3b, 2, 'VB', 'ddd', 5) returning id into v3b;
+  insert into questions (course_id, level_id, position, text, type) values (c3_id, l3a, 1, 'LQ1', 'single') returning id into lq1;
+  insert into options (question_id, position, text, is_correct) values (lq1, 1, 'right', true) returning id into lq1r;
+  insert into options (question_id, position, text, is_correct) values (lq1, 2, 'wrong', false) returning id into lq1w;
+  insert into questions (course_id, level_id, position, text, type) values (c3_id, l3a, 2, 'LQ2', 'single') returning id into lq2;
+  insert into options (question_id, position, text, is_correct) values (lq2, 1, 'right', true) returning id into lq2r;
+  insert into options (question_id, position, text, is_correct) values (lq2, 2, 'wrong', false) returning id into lq2w;
+  insert into questions (course_id, level_id, position, text, type) values (c3_id, l3b, 3, 'LQ3', 'single') returning id into lq3;
+  insert into options (question_id, position, text, is_correct) values (lq3, 1, 'right', true) returning id into lq3r;
+  insert into questions (course_id, position, text, type) values (c3_id, 4, 'FQ1', 'single') returning id into fq1;
+  insert into options (question_id, position, text, is_correct) values (fq1, 1, 'right', true) returning id into fq1r;
+  insert into enrollments (course_id, user_id, source) values (c3_id, u_id, 'self') returning id into e3_id;
+
+  -- The level quiz needs the level's videos watched first.
+  failed := false;
+  begin perform submit_level_quiz(e3_id, l3a, '[]'::jsonb);
+  exception when others then failed := sqlerrm = 'videos_not_done'; end;
+  assert failed, 'level quiz should wait for the level videos';
+
+  select * into r from record_video_progress(e3_id, v3a, '{0}', 5);
+  assert r.completed, 'a 5-second video completes with its one segment';
+
+  -- Level 2's video stays locked until level 1's quiz is passed.
+  failed := false;
+  begin perform record_video_progress(e3_id, v3b, '{0}', 0);
+  exception when others then failed := sqlerrm = 'video_locked'; end;
+  assert failed, 'level 2 video should be locked before level 1 is passed';
+  failed := false;
+  begin perform submit_level_quiz(e3_id, l3b, '[]'::jsonb);
+  exception when others then failed := sqlerrm = 'level_locked'; end;
+  assert failed, 'level 2 quiz should be locked before level 1 is passed';
+
+  -- A question from another level is refused.
+  failed := false;
+  begin perform submit_level_quiz(e3_id, l3a, jsonb_build_array(jsonb_build_object('question_id', lq3, 'selected_option_ids', jsonb_build_array(lq3r))));
+  exception when others then failed := sqlerrm = 'question_not_in_level'; end;
+  assert failed, 'answers must be for questions of this level';
+
+  -- Try 1: one right, one wrong. Not passed; the wrong question is named.
+  select * into r from submit_level_quiz(e3_id, l3a, jsonb_build_array(
+    jsonb_build_object('question_id', lq1, 'selected_option_ids', jsonb_build_array(lq1r)),
+    jsonb_build_object('question_id', lq2, 'selected_option_ids', jsonb_build_array(lq2w))));
+  assert r.correct_count = 1 and r.question_count = 2 and not r.passed, 'try 1 should be 1 of 2, not passed';
+  assert r.wrong_question_ids = array[lq2], 'try 1 should name LQ2 as wrong';
+  assert not level_passed(e3_id, l3a), 'level 1 is not passed after a wrong try';
+
+  -- Try 2: an unanswered question counts as wrong.
+  select * into r from submit_level_quiz(e3_id, l3a, jsonb_build_array(
+    jsonb_build_object('question_id', lq1, 'selected_option_ids', jsonb_build_array(lq1r))));
+  assert not r.passed and r.wrong_question_ids = array[lq2], 'unanswered counts as wrong';
+
+  -- Try 3: all right. Passed; tries are numbered.
+  select * into r from submit_level_quiz(e3_id, l3a, jsonb_build_array(
+    jsonb_build_object('question_id', lq1, 'selected_option_ids', jsonb_build_array(lq1r)),
+    jsonb_build_object('question_id', lq2, 'selected_option_ids', jsonb_build_array(lq2r))));
+  assert r.passed and r.correct_count = 2 and r.wrong_question_ids = '{}', 'try 3 should pass';
+  assert (select max(attempt_no) from level_quiz_attempts where enrollment_id = e3_id and level_id = l3a) = 3, 'three tries recorded';
+  assert level_passed(e3_id, l3a), 'level 1 is passed';
+
+  -- Level 2 unlocks. With its video watched but its quiz not passed, the final test stays locked.
+  select * into r from record_video_progress(e3_id, v3b, '{0}', 5);
+  assert r.completed, 'level 2 video completes once level 1 is passed';
+  failed := false;
+  begin perform start_attempt(e3_id);
+  exception when others then failed := sqlerrm = 'levels_not_passed'; end;
+  assert failed, 'final test should wait for every level';
+
+  select * into r from submit_level_quiz(e3_id, l3b, jsonb_build_array(
+    jsonb_build_object('question_id', lq3, 'selected_option_ids', jsonb_build_array(lq3r))));
+  assert r.passed, 'level 2 quiz passes';
+
+  -- Final test: only final questions count; level questions are refused.
+  select id into a_id from start_attempt(e3_id);
+  failed := false;
+  begin perform submit_attempt(a_id, jsonb_build_array(jsonb_build_object('question_id', lq1, 'selected_option_ids', jsonb_build_array(lq1r))));
+  exception when others then failed := sqlerrm = 'question_not_in_course'; end;
+  assert failed, 'level questions are not part of the final test';
+  s := submit_attempt(a_id, jsonb_build_array(jsonb_build_object('question_id', fq1, 'selected_option_ids', jsonb_build_array(fq1r))));
+  assert s = 100.00, format('final test score %s, expected 100.00', s);
+  assert (select max_points from attempts where id = a_id) = 1, 'final test scores only the 1 final question';
+  assert (select count(*) from answers where attempt_id = a_id) = 1, 'only final questions get answer rows';
+  assert (select count(*) from activity_log where action = 'level_quiz.submitted' and enrollment_id = e3_id) = 4, 'four level quiz tries logged';
+
   -- Activity log recorded the key events.
-  assert (select count(*) from activity_log where action = 'video.completed') = 2, 'two video.completed events';
-  assert (select count(*) from activity_log where action = 'attempt.submitted') = 2, 'two attempt.submitted events';
+  assert (select count(*) from activity_log where action = 'video.completed') = 4, 'four video.completed events';
+  assert (select count(*) from activity_log where action = 'attempt.submitted') = 3, 'three attempt.submitted events';
 
   raise notice 'All function tests passed';
 end $$;

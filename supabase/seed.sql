@@ -13,9 +13,13 @@ with course as (
   select 'Email Etiquette (sample)', 'Sample course for local development.', 60, 'published', now(), id
   from users where email = 'admin@transfunnel.com'
   returning id
+), lvl as (
+  insert into levels (course_id, position, title)
+  select id, 1, 'Level 1' from course
+  returning id, course_id
 ), vids as (
-  insert into videos (course_id, position, title, youtube_video_id, duration_seconds)
-  select id, v.position, v.title, v.yt, v.secs from course,
+  insert into videos (course_id, level_id, position, title, youtube_video_id, duration_seconds)
+  select lvl.course_id, lvl.id, v.position, v.title, v.yt, v.secs from lvl,
     (values (1, 'Writing clear subject lines', 'SAMPLE_VIDEO_1', 180),
             (2, 'Reply-all and CC etiquette',  'SAMPLE_VIDEO_2', 240)) as v(position, title, yt, secs)
   returning id

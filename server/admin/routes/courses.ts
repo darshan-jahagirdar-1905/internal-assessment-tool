@@ -68,6 +68,18 @@ async function lockCourse(tx: Tx, id: string): Promise<CourseRow> {
   return course
 }
 
+// The course's first level (every course has at least one; architecture.md
+// 9.8). Courses always get "Level 1" when created; this also covers any
+// course that somehow has none.
+async function firstLevel(tx: Tx, courseId: string): Promise<string> {
+  const [level] = await tx<{ id: string }[]>`
+    select id from levels where course_id = ${courseId} order by position limit 1`
+  if (level) return level.id
+  const [created] = await tx<{ id: string }[]>`
+    insert into levels (course_id, position, title) values (${courseId}, 1, 'Level 1') returning id`
+  return created.id
+}
+
 async function lockDraft(tx: Tx, id: string): Promise<CourseRow> {
   const course = await lockCourse(tx, id)
   if (course.status !== 'draft') throw new HttpError(409, 'not_draft')
@@ -87,7 +99,7 @@ async function loadCourse(db: postgres.Sql | Tx, id: string) {
            coalesce(json_agg(json_build_object('id', o.id, 'position', o.position, 'text', o.text, 'is_correct', o.is_correct)
                     order by o.position) filter (where o.id is not null), '[]') as options
     from questions q left join options o on o.question_id = q.id
-    where q.course_id = ${id}
+    where q.course_id = ${id} and q.level_id is null
     group by q.id order by q.position`
   return { ...course, videos, questions }
 }
@@ -146,6 +158,7 @@ courses.post('/courses', async (c) => {
       values (${body.title}, ${body.description ?? null}, ${body.pass_percentage},
               ${body.due_at ? new Date(body.due_at) : null}, ${user.id})
       returning id`
+    await tx`insert into levels (course_id, position, title) values (${row.id}, 1, 'Level 1')`
     await logActivity(tx, { actorUserId: user.id, action: 'course.created', courseId: row.id })
     return row.id
   })
@@ -172,11 +185,12 @@ courses.put('/courses/:id/videos', async (c) => {
   const body = await parseBody(c, videosSchema)
   await sql().begin(async (tx) => {
     await lockDraft(tx, id)
+    const levelId = await firstLevel(tx, id)
     await tx`delete from videos where course_id = ${id}`
     for (const [i, v] of body.videos.entries()) {
       await tx`
-        insert into videos (course_id, position, title, youtube_video_id, duration_seconds)
-        values (${id}, ${i + 1}, ${v.title}, ${v.youtube_video_id}, ${v.duration_seconds})`
+        insert into videos (course_id, level_id, position, title, youtube_video_id, duration_seconds)
+        values (${id}, ${levelId}, ${i + 1}, ${v.title}, ${v.youtube_video_id}, ${v.duration_seconds})`
     }
   })
   return c.json(await loadCourse(sql(), id))
@@ -187,7 +201,7 @@ courses.put('/courses/:id/questions', async (c) => {
   const body = await parseBody(c, questionsSchema)
   await sql().begin(async (tx) => {
     await lockDraft(tx, id)
-    await tx`delete from questions where course_id = ${id}`
+    await tx`delete from questions where course_id = ${id} and level_id is null`
     for (const [i, q] of body.questions.entries()) {
       const [question] = await tx<{ id: string }[]>`
         insert into questions (course_id, position, text, type, points)
@@ -226,14 +240,24 @@ courses.post('/courses/:id/duplicate', async (c) => {
               ${source.max_attempts}, ${source.due_at}, ${user.id})
       returning id`
     await tx`
-      insert into videos (course_id, position, title, youtube_video_id, duration_seconds)
-      select ${copy.id}, position, title, youtube_video_id, duration_seconds from videos where course_id = ${id}`
-    const questions = await tx<{ id: string; position: number; text: string; type: string; points: number }[]>`
-      select id, position, text, type, points from questions where course_id = ${id} order by position`
+      insert into levels (course_id, position, title)
+      select ${copy.id}, position, title from levels where course_id = ${id}`
+    await tx`
+      insert into videos (course_id, level_id, position, title, youtube_video_id, duration_seconds)
+      select ${copy.id}, nl.id, v.position, v.title, v.youtube_video_id, v.duration_seconds
+      from videos v join levels ol on ol.id = v.level_id
+      join levels nl on nl.course_id = ${copy.id} and nl.position = ol.position
+      where v.course_id = ${id}`
+    const questions = await tx<{ id: string; position: number; text: string; type: string; points: number; level_id: string | null }[]>`
+      select q.id, q.position, q.text, q.type, q.points, nl.id as level_id
+      from questions q
+      left join levels ol on ol.id = q.level_id
+      left join levels nl on nl.course_id = ${copy.id} and nl.position = ol.position
+      where q.course_id = ${id} order by q.position`
     for (const q of questions) {
       const [nq] = await tx<{ id: string }[]>`
-        insert into questions (course_id, position, text, type, points)
-        values (${copy.id}, ${q.position}, ${q.text}, ${q.type}, ${q.points}) returning id`
+        insert into questions (course_id, level_id, position, text, type, points)
+        values (${copy.id}, ${q.level_id}, ${q.position}, ${q.text}, ${q.type}, ${q.points}) returning id`
       await tx`
         insert into options (question_id, position, text, is_correct)
         select ${nq.id}, position, text, is_correct from options where question_id = ${q.id}`

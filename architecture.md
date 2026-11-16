@@ -6,17 +6,17 @@
 
 ## 1. Overview
 
-An internal learning platform. Employees sign in with their company account, see a dashboard of courses, enroll (or are enrolled by an admin), watch the course videos, and then take the course's assessment. Each video must be watched to at least 80% before the next one unlocks, and the assessment unlocks when every video is done. Employees see only their score. Admins build courses, assign them, and track progress and results.
+An internal learning platform. Employees sign in with their company account, see a dashboard of courses, enroll (or are enrolled by an admin), and work through a course as a path of **levels**: each level's videos, then a short level quiz, then the next level. A final test at the end gives the recorded score. Each video must be watched to at least 80% before the next one unlocks; a level quiz must be answered 100% correctly (unlimited tries) before the next level unlocks; the final test unlocks when every level is passed. Employees see only their final score. Admins build courses, assign them, and track progress and results.
 
-The first course is *Email Etiquette*, built from a YouTube video.
+The first course is *Workplace Communication* (decided 16 Nov 2026): five levels of YouTube videos (speaking clearly, email, Microsoft Teams chat, meetings and video calls, listening and feedback) and a final test. It grew out of the *Email Etiquette* course.
 
 ### In scope (V1 pilot)
 
 - Sign-in for employees and admins with their company email, through **WorkOS AuthKit** (a 6-digit code sent by email; section 4.3)
 - Course catalog, self-enrollment, and admin assignment by email
-- Courses made of ordered YouTube videos plus one assessment
+- Courses made of levels: ordered YouTube videos, a level quiz after each level (100% to pass, unlimited tries), and one final test (section 9.8)
 - Watch tracking: each video must reach 80%, in order, before the next unlocks
-- One assessment per course, single-choice and multiple-choice questions, autosave and resume
+- One final test per course, single-choice and multiple-choice questions, autosave and resume
 - Automatic scoring; employees see their score only
 - One attempt per course for the pilot (the setting exists so retakes can be turned on later)
 - Admin course builder, tracking, per-person reports, stats, CSV export
@@ -29,7 +29,8 @@ The first course is *Email Etiquette*, built from a YouTube video.
 - Retakes (kept as a setting, fixed at 1)
 - Video hosts other than YouTube, documents or slides as lessons
 - Text-answer questions, certificates, question pools, proctoring
-- Showing employees pass/fail, correct answers or which questions they got wrong
+- Showing employees pass/fail or correct answers, or which final-test questions they got wrong (a level quiz shows which of its questions were wrong, never the correct option)
+- Points, streaks and badges (the level path is the only game-like part)
 - HRMS integration (section 15 keeps the design open for it)
 
 ---
@@ -191,13 +192,14 @@ The session cookie lasts up to 30 days in the browser; the WorkOS session length
 
 ## 6. Database
 
-Ten tables.
+Twelve tables.
 
 ```
-users ──┐                                   ┌──< videos
-        ├──< enrollments >── courses ───────┤
-        │        │                          └──< questions ──< options
+users ──┐                                   ┌──< levels ──┬──< videos
+        ├──< enrollments >── courses ───────┤             └──< questions (level quiz) ──< options
+        │        │                          └──< questions (final test, no level) ──< options
         │        ├──< video_progress >── videos
+        │        ├──< level_quiz_attempts >── levels
         │        └──< attempts ──< answers
 activity_log (references users / courses / enrollments by id)
 ```
@@ -335,13 +337,49 @@ create table activity_log (
 create index activity_log_course_idx on activity_log (course_id, created_at);
 ```
 
-Migrations: `20261104120000_initial_schema.sql` (all of the above and the functions in section 9), `20261104130000_first_admin.sql`, and `20261105100000_compute_pass_fail.sql` (drops the stored pass/fail column `attempts.passed`; pass/fail is computed, section 9.3).
+**Levels** (migration `20261116100000_levels_and_level_quizzes.sql`, section 9.8):
+
+```sql
+-- A course is a path of levels. Every course has at least one; courses made
+-- before levels got "Level 1" holding all their videos.
+create table levels (
+  id         uuid primary key default gen_random_uuid(),
+  course_id  uuid not null references courses(id) on delete cascade,
+  position   int  not null,
+  title      text not null,
+  unique (course_id, position)
+);
+
+alter table videos    add column level_id uuid not null references levels(id) on delete cascade;
+-- A question with a level is in that level's quiz; with none, in the final test.
+alter table questions add column level_id uuid references levels(id) on delete cascade;
+
+-- Every try at a level quiz (unlimited tries). answers = [{question_id, selected_option_ids}].
+create table level_quiz_attempts (
+  id              uuid primary key default gen_random_uuid(),
+  enrollment_id   uuid not null references enrollments(id),
+  level_id        uuid not null references levels(id) on delete cascade,
+  attempt_no      int  not null,
+  answers         jsonb not null default '[]',
+  correct_count   int  not null,
+  question_count  int  not null,
+  passed          boolean not null,
+  submitted_at    timestamptz not null default now(),
+  unique (enrollment_id, level_id, attempt_no)
+);
+```
+
+Videos keep one `position` sequence across the whole course, in level order.
+
+Migrations: `20261104120000_initial_schema.sql` (the tables above it and the functions in section 9), `20261104130000_first_admin.sql`, `20261105100000_compute_pass_fail.sql` (drops the stored pass/fail column `attempts.passed`; pass/fail is computed, section 9.3), `20261105120000_foreign_key_indexes.sql`, and `20261116100000_levels_and_level_quizzes.sql` (levels, level quizzes, and the level rules in `record_video_progress`, `start_attempt` and `submit_attempt`).
 
 Values shown in the UI that are not stored:
 
 - **Overdue:** a due date is set, `now() > due_at`, and the enrollment is not `completed`.
-- **Video locked:** an earlier video in the course has no `completed_at`.
-- **Assessment locked:** any video in the course has no `completed_at`.
+- **Level passed:** the level has no quiz questions, or a try at its quiz got every question right (`level_passed(enrollment, level)`).
+- **Video locked:** an earlier video in the course has no `completed_at`, or an earlier level is not passed.
+- **Level quiz locked:** an earlier level is not passed, or a video in this level has no `completed_at`.
+- **Final test locked:** any video has no `completed_at`, or any level is not passed.
 
 ### 6.2 Row Level Security
 
@@ -507,7 +545,7 @@ Starting and submitting are Postgres functions that the API calls with plain SQL
 **`start_attempt(enrollment_id)`**
 
 1. If an `in_progress` attempt exists, return it (resume).
-2. Otherwise check: course is `published`, not past `due_at`, every video complete, `attempts_used < max_attempts`.
+2. Otherwise check: course is `published`, not past `due_at`, every video complete, every level passed (9.8), `attempts_used < max_attempts`.
 3. Insert the attempt with `attempt_no = attempts_used + 1`, increment `attempts_used`, and set the enrollment to `assessment_in_progress`.
 4. The unique index on open attempts guarantees two simultaneous Start clicks create only one attempt.
 
@@ -517,8 +555,8 @@ Starting and submitting are Postgres functions that the API calls with plain SQL
 
 1. Lock the attempt row (`select … for update`).
 2. If already `submitted`, return the stored score (double-clicks and second tabs are harmless).
-3. Upsert the final answers.
-4. Score every question (9.3) and write `is_correct` and `points_awarded`.
+3. Upsert the final answers. Only final-test questions (no level) are accepted and scored.
+4. Score every final-test question (9.3) and write `is_correct` and `points_awarded`.
 5. Write `score_points`, `max_points`, `score_pct`, `submitted_at`, `status = 'submitted'`.
 6. Update the enrollment: `best_score_pct`, `status = 'completed'`, `completed_at`.
 7. Insert an `activity_log` row.
@@ -534,7 +572,7 @@ Starting and submitting are Postgres functions that the API calls with plain SQL
 
 ### 9.4 What learners see
 
-Their score % and the date, per course. **Never** pass/fail, the pass mark, which questions were right or wrong, or the correct answers. Enforced by the API, not just hidden in the UI.
+Their final-test score % and the date, per course. **Never** pass/fail, the pass mark, which final-test questions were right or wrong, or any correct answer. After each level-quiz try they see how many they got right and which of its questions were wrong, never the correct option (9.8). Enforced by the API, not just hidden in the UI.
 
 ### 9.5 Due dates and auto-submit
 
@@ -547,6 +585,22 @@ One row per enrollment: name, email, employee code, source, enrolled at, videos 
 ### 9.7 Editing after publishing
 
 Published courses are read-only, except the pass mark (9.3). To change videos or questions, duplicate the course, edit the copy, publish it and assign it. Archive the old one. This keeps every stored score explainable.
+
+### 9.8 Levels and level quizzes
+
+Decided 16 Nov 2026: courses work like a Duolingo path.
+
+- A course is an ordered list of **levels**. Each level holds one or more videos and a short **level quiz** (5 single-choice questions for the pilot course). Questions with no level form the **final test**.
+- Inside a level, videos unlock in order as in 9.1. The level quiz unlocks when the level's videos are all complete.
+- **Passing a level quiz needs every question right.** Tries are unlimited. After each try the learner sees how many were right and which questions were wrong, but never the correct option, then retries or rewatches.
+- The next level's first video unlocks only once the previous level is passed. The final test unlocks when every level is passed and every video is complete.
+- **Only the final test is scored** (9.2, 9.3). Level-quiz tries are recorded in `level_quiz_attempts` for admin reports: tries per level, first-try result, date passed.
+- `submit_level_quiz(enrollment, level, answers)` runs as one transaction:
+  1. checks the course is open and not past due, and the level is unlocked with its videos complete;
+  2. checks every answer belongs to a question of that level, with its own options;
+  3. scores the try, stores it, and logs `level_quiz.submitted`;
+  4. returns `correct_count`, `question_count`, `passed` and `wrong_question_ids`.
+- A level with no quiz questions counts as passed, so courses made before levels work unchanged.
 
 ---
 
@@ -593,6 +647,9 @@ Published courses are read-only, except the pass mark (9.3). To change videos or
 | Sign-in code lands in junk | Tell staff in advance; IT can allowlist the WorkOS sender (a mail setting, no DNS) |
 | WorkOS is down | Nobody can sign in; people already signed in continue until their access token needs refreshing |
 | Session expires mid-assessment | Saved answers are kept; after signing in again the attempt resumes |
+| Level quiz failed | The learner sees which questions were wrong (not the correct option) and retries, as often as needed |
+| Level quiz guessed by trial and error | Possible with unlimited tries; only the final test is scored, and admins see each level's try count |
+| Level quiz retaken after passing | Allowed as practice; the level stays passed |
 
 ---
 
@@ -663,6 +720,16 @@ Everyone works across all modules; anyone can pick up any step.
 | 10 | Course content: Claude drafts 30 single-choice questions from the *Email Etiquette* transcript, each with the timestamp it comes from; the team approves; an admin enters it in the builder (70% pass mark) | 5; video link and transcript |
 | 11 | Test round: 4–5 people run the whole journey on production | 5–10 |
 | 12 | Go-live: clear test data, turn `TEST_SIGNIN` off, switch WorkOS to Production keys, accept WorkOS's DPA and add a line to an internal notice, RLS checklist and edge cases (section 11), then the pilot with 60–80 people | 11 |
+
+**Execution plan, levels (decided 16 Nov 2026; section 9.8)**
+
+| # | Step | Depends on |
+|---|---|---|
+| L1 | Database: `levels`, `level_quiz_attempts`, `submit_level_quiz`, the level rules in the video, start and submit functions, function tests; existing courses get "Level 1"; the course builder keeps working (new videos go into the first level) | 4 |
+| L2 | Learner API: levels on the course page, `GET`/`POST /levels/:id/quiz` | L1 |
+| L3 | Learner UI: the level path on the course page, the level quiz page | L2 |
+| L4 | Admin: levels in the course builder (videos and questions per level, final test), level columns in results, reports and export | L1 |
+| L5 | Course content: *Workplace Communication* outline (5 levels, 6 videos), level quizzes and final test drafted from the transcripts, approved by the team | L4; transcripts |
 
 Claude builds steps 5–9 one after another (decision, 4 Nov 2026). Timeline: as soon as possible; no fixed dates.
 
